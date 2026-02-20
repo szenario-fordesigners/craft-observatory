@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import LineChartDemo from '@/components/LineChartDemo.vue';
+
 const { title } = defineProps<{
   title: string;
 }>();
@@ -6,8 +8,10 @@ const { title } = defineProps<{
 
 <template>
   <div id="umami-is-wrapper">
-    <h1 class="text-2xl text-white font-bold">Hello World</h1>
+    <h1 class="text-2xl text-black font-bold">Hello World</h1>
     <p>Passed via props:{{ title }}</p>
+
+    <LineChartDemo />
   </div>
 </template>
 

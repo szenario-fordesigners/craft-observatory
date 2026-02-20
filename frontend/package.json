@@ -20,6 +20,8 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "4.1.18",
+    "@unovis/ts": "^1.6.4",
+    "@unovis/vue": "^1.6.4",
     "tailwindcss": "4.1.18",
     "vue": "3.5.28"
   },
