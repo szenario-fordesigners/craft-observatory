@@ -23,7 +23,7 @@ export default defineConfig({
   build: {
     lib: {
       entry: frontendEntry,
-      name: 'AltPilotApp',
+      name: 'UmamiIsApp',
       formats: ['iife'],
       fileName: () => 'main.js',
     },
@@ -33,7 +33,7 @@ export default defineConfig({
         assetFileNames: '[name][extname]',
       },
     },
-    outDir: '../src/assetbundles/altpilotfrontend/dist',
+    outDir: '../src/assetbundles/craftumamiiswidget/dist',
     emptyOutDir: true,
 
     sourcemap: true,

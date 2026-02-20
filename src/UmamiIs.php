@@ -5,7 +5,11 @@ namespace szenario\craftumamiis;
 use Craft;
 use craft\base\Model;
 use craft\base\Plugin;
+use craft\events\RegisterComponentTypesEvent;
+use craft\services\Dashboard;
 use szenario\craftumamiis\models\Settings;
+use szenario\craftumamiis\widgets\UmamiIsWidget;
+use yii\base\Event;
 
 /**
  * umami plugin
@@ -60,5 +64,8 @@ class UmamiIs extends Plugin
     {
         // Register event handlers here ...
         // (see https://craftcms.com/docs/5.x/extend/events.html to get started)
+        Event::on(Dashboard::class, Dashboard::EVENT_REGISTER_WIDGET_TYPES, function (RegisterComponentTypesEvent $event) {
+            $event->types[] = UmamiIsWidget::class;
+        });
     }
 }
