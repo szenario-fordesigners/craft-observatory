@@ -2,7 +2,6 @@
 
 namespace szenario\craftumamiis\models;
 
-use Craft;
 use craft\base\Model;
 
 /**
@@ -10,4 +9,14 @@ use craft\base\Model;
  */
 class Settings extends Model
 {
+    public $umamiUrl = 'https://api.umami.is';
+    public $umamiApiKey = '';
+    public $umamiWebsiteId = '';
+
+    public function rules(): array
+    {
+        return [
+            [['umamiUrl', 'umamiApiKey', 'umamiWebsiteId'], 'required'],
+        ];
+    }
 }

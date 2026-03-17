@@ -1,5 +1,9 @@
 # umami
 
+umami.is analytics chart in the craft cms dashboard.
+
+umami.is docs: https://umami.is/docs/api/website-stats
+
 
 
 ## Requirements

@@ -1,0 +1,22 @@
+{% import "_includes/forms" as forms %}
+
+{{ forms.selectField({
+    label: 'Default Time Period'|t('umami-is'),
+    instructions: 'The default time period to show when the widget loads.'|t('umami-is'),
+    id: 'defaultPeriod',
+    name: 'defaultPeriod',
+    options: [
+        { label: 'Today'|t('umami-is'), value: 'today' },
+        { label: 'Last 24 hours'|t('umami-is'), value: '24h' },
+        { label: 'This week'|t('umami-is'), value: 'this_week' },
+        { label: 'Last 7 days'|t('umami-is'), value: '7d' },
+        { label: 'This month'|t('umami-is'), value: 'this_month' },
+        { label: 'Last 30 days'|t('umami-is'), value: '30d' },
+        { label: 'Last 90 days'|t('umami-is'), value: '90d' },
+        { label: 'This year'|t('umami-is'), value: 'this_year' },
+        { label: 'Last 6 months'|t('umami-is'), value: '6m' },
+        { label: 'Last 12 months'|t('umami-is'), value: '12m' },
+        { label: 'All time'|t('umami-is'), value: 'all' },
+    ],
+    value: widget.defaultPeriod
+}) }}

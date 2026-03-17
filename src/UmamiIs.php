@@ -8,12 +8,14 @@ use craft\base\Plugin;
 use craft\events\RegisterComponentTypesEvent;
 use craft\services\Dashboard;
 use szenario\craftumamiis\models\Settings;
+use szenario\craftumamiis\services\Analytics;
 use szenario\craftumamiis\widgets\UmamiIsWidget;
 use yii\base\Event;
 
 /**
  * umami plugin
  *
+ * @property-read Analytics $analytics
  * @method static UmamiIs getInstance()
  * @method Settings getSettings()
  * @author szenario
@@ -29,7 +31,7 @@ class UmamiIs extends Plugin
     {
         return [
             'components' => [
-                // Define component configs here...
+                'analytics' => Analytics::class,
             ],
         ];
     }
