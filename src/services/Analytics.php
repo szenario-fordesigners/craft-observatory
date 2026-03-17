@@ -71,7 +71,6 @@ class Analytics extends Component
             }
 
             Craft::error("Unexpected response from Umami API: " . print_r($body, true), __METHOD__);
-
         } catch (GuzzleException $e) {
             Craft::error("Error fetching active visitors from Umami: {$e->getMessage()}", __METHOD__);
         } catch (\Throwable $e) {
@@ -143,7 +142,6 @@ class Analytics extends Component
             }
 
             Craft::error("Unexpected response from Umami API: " . print_r($body, true), __METHOD__);
-
         } catch (GuzzleException $e) {
             Craft::error("Error fetching pageviews from Umami: {$e->getMessage()}", __METHOD__);
         } catch (\Throwable $e) {
@@ -217,7 +215,6 @@ class Analytics extends Component
             }
 
             Craft::error("Unexpected response from Umami API: " . print_r($body, true), __METHOD__);
-
         } catch (GuzzleException $e) {
             Craft::error("Error fetching metrics from Umami: {$e->getMessage()}", __METHOD__);
         } catch (\Throwable $e) {

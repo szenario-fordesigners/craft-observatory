@@ -10,6 +10,7 @@ return static function(ECSConfig $ecsConfig): void {
         __DIR__ . '/src',
         __FILE__,
     ]);
+    $ecsConfig->parallel();
 
     $ecsConfig->sets([
         SetList::CRAFT_CMS_4,
