@@ -15,10 +15,10 @@ const chartData = computed<DataRecord[]>(() => {
     }
 
     // Unovis expects x to be a number (e.g., timestamp) for time scales
-    return props.pageviews.pageviews.map((pv: { t: string, y: number }) => ({
-        x: new Date(pv.t).getTime(),
+    return props.pageviews.pageviews.map((pv: any) => ({
+        x: new Date(pv.t || pv.x).getTime(),
         y: Number(pv.y)
-    }));
+    })).filter(d => !isNaN(d.x) && !isNaN(d.y));
 });
 
 // Format the timestamp as a readable date for the X-axis

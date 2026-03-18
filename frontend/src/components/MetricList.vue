@@ -1,19 +1,16 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed } from 'vue';
+import type { PropType } from 'vue';
 import type { WebsiteMetric } from '@umami/api-client';
 
 const props = defineProps({
-  type: {
-    type: String,
+  data: {
+    type: Array as PropType<WebsiteMetric[]>,
     required: true
   },
-  startAt: {
-    type: Number,
-    required: true
-  },
-  endAt: {
-    type: Number,
-    required: true
+  loading: {
+    type: Boolean,
+    default: false
   },
   label: {
     type: String,
@@ -22,43 +19,9 @@ const props = defineProps({
   }
 });
 
-const data = ref<WebsiteMetric[]>([]);
-const maxCount = ref(0);
-const loading = ref(false);
-
-const fetchData = async () => {
-  loading.value = true;
-  try {
-    const url = new URL(window.Craft.getActionUrl('umami-is/dashboard/get-metrics'), window.location.origin);
-    url.searchParams.append('type', props.type);
-    url.searchParams.append('startAt', props.startAt.toString());
-    url.searchParams.append('endAt', props.endAt.toString());
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
-    
-    if (response.ok) {
-      const result = await response.json();
-      data.value = Array.isArray(result) ? result : [];
-      maxCount.value = Math.max(...data.value.map((d: WebsiteMetric) => d.y), 0);
-    }
-  } catch (e) {
-    console.error(`Failed to fetch metrics for ${props.type}`, e);
-  } finally {
-    loading.value = false;
-  }
-};
-
-watch(
-  () => [props.startAt, props.endAt, props.type],
-  () => {
-    fetchData();
-  },
-  { immediate: true }
-);
+const maxCount = computed(() => {
+  return Math.max(...props.data.map((d: WebsiteMetric) => d.y), 0);
+});
 
 const getPercentage = (val: number) => {
   if (maxCount.value === 0) return 0;

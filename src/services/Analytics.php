@@ -80,8 +80,70 @@ class Analytics extends Component
         return null;
     }
 
-    /**
-     * Get pageviews for a given timeframe.
+    /**     * Get statistics for the website.
+     *
+     * @param int $startAt Timestamp (in ms)
+     * @param int $endAt Timestamp (in ms)
+     * @return array|null The stats data, or null on error.
+     */
+    public function getStats(int $startAt, int $endAt): ?array
+    {
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+
+        if (empty($websiteId)) {
+            Craft::error('Umami Website ID is required.', __METHOD__);
+            return null;
+        }
+
+        $cacheKey = "umami_stats_{$websiteId}_{$startAt}_{$endAt}";
+        $cache = Craft::$app->getCache();
+
+        $cachedStats = $cache->get($cacheKey);
+        if ($cachedStats !== false) {
+            return $cachedStats;
+        }
+
+        $url = rtrim(App::parseEnv($settings->umamiUrl), '/');
+        $apiKey = App::parseEnv($settings->umamiApiKey);
+
+        if (empty($url) || empty($apiKey)) {
+            Craft::error('Umami settings are incomplete. URL and API Key are required.', __METHOD__);
+            return null;
+        }
+
+        $client = Craft::createGuzzleClient(['timeout' => 5.0, 'connect_timeout' => 3.0]);
+        try {
+            $cleanUrl = preg_replace('#/(api|v1)/?$#', '', $url);
+            $endpointUrl = "{$cleanUrl}/v1/websites/{$websiteId}/stats";
+
+            $headers = [
+                'Accept' => 'application/json',
+                'x-umami-api-key' => $apiKey,
+            ];
+
+            $response = $client->request('GET', $endpointUrl, [
+                'headers' => $headers,
+                'query' => [
+                    'startAt' => $startAt,
+                    'endAt' => $endAt,
+                ],
+            ]);
+
+            $body = json_decode($response->getBody()->getContents(), true);
+
+            if (is_array($body)) {
+                $cache->set($cacheKey, $body, 300); // Cache for 5 minutes
+                return $body;
+            }
+        } catch (\Throwable $e) {
+            Craft::error("Unexpected error fetching stats from Umami: {$e->getMessage()}", __METHOD__);
+        }
+
+        return null;
+    }
+
+    /**     * Get pageviews for a given timeframe.
      *
      * @param int $startAt Timestamp (in ms)
      * @param int $endAt Timestamp (in ms)

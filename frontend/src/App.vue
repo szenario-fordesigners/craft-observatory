@@ -2,8 +2,9 @@
 import LineChartDemo from '@/components/LineChartDemo.vue';
 import DateRangeSelector from '@/components/DateRangeSelector.vue';
 import MetricList from '@/components/MetricList.vue';
+import StatsOverview from '@/components/StatsOverview.vue';
 import { useDateRange, type RangeValue } from '@/composables/useDateRange';
-import type { WebsitePageviews } from '@umami/api-client';
+import type { WebsitePageviews, WebsiteMetric, WebsiteStats } from '@umami/api-client';
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 
 const props = defineProps<{
@@ -15,8 +16,56 @@ const props = defineProps<{
 const { currentRangeValue, currentRange } = useDateRange((props.defaultPeriod as RangeValue) || '24h');
 const currentData = ref<WebsitePageviews | null>(props.pageviews);
 
+const statsData = ref<WebsiteStats | null>(null);
+const statsLoading = ref(false);
+
 const envTab = ref<'browser' | 'os' | 'device'>('browser');
 const locTab = ref<'country' | 'region' | 'city'>('country');
+
+const metricsData = ref<Record<string, WebsiteMetric[]>>({});
+const metricsLoading = ref(false);
+
+const fetchAllMetrics = async () => {
+  metricsLoading.value = true;
+  try {
+    const url = new URL(window.Craft.getActionUrl('umami-is/dashboard/get-metrics'), window.location.origin);
+    url.searchParams.append('types', 'url,referrer,browser,os,device,country,region,city');
+    url.searchParams.append('startAt', currentRange.value.startAt.toString());
+    url.searchParams.append('endAt', currentRange.value.endAt.toString());
+
+    const response = await fetch(url.toString(), {
+      headers: { 'Accept': 'application/json' },
+    });
+    
+    if (response.ok) {
+        metricsData.value = await response.json();
+    }
+  } catch (e) {
+    console.error('Error fetching metrics', e);
+  } finally {
+    metricsLoading.value = false;
+  }
+};
+
+const fetchStats = async () => {
+  statsLoading.value = true;
+  try {
+    const url = new URL(window.Craft.getActionUrl('umami-is/dashboard/get-stats'), window.location.origin);
+    url.searchParams.append('startAt', currentRange.value.startAt.toString());
+    url.searchParams.append('endAt', currentRange.value.endAt.toString());
+
+    const response = await fetch(url.toString(), {
+      headers: { 'Accept': 'application/json' },
+    });
+    if (response.ok) {
+      statsData.value = await response.json();
+    }
+  } catch (e) {
+    console.error('Error fetching stats', e);
+  } finally {
+    statsLoading.value = false;
+  }
+};
 
 const fetchPageviews = async () => {
   try {
@@ -41,7 +90,11 @@ const fetchPageviews = async () => {
 let intervalId: number;
 
 onMounted(() => {
-  intervalId = window.setInterval(fetchPageviews, 60000);
+  intervalId = window.setInterval(() => {
+    fetchPageviews();
+    fetchAllMetrics();
+    fetchStats();
+  }, 60000);
 });
 
 onUnmounted(() => {
@@ -53,8 +106,10 @@ onUnmounted(() => {
 watch(currentRangeValue, (newVal, oldVal) => {
   if (newVal !== oldVal) {
     fetchPageviews();
+    fetchAllMetrics();
+    fetchStats();
   }
-});
+}, { immediate: true });
 </script>
 
 <template>
@@ -63,6 +118,9 @@ watch(currentRangeValue, (newVal, oldVal) => {
       <h1 class="text-xl text-gray-800 font-bold m-0">{{ title }}</h1>
       <DateRangeSelector v-model="currentRangeValue" />
     </div>
+
+    <!-- KPI Stats -->
+    <StatsOverview :stats="statsData" :loading="statsLoading" />
 
     <!-- Main Chart -->
     <div class="mb-8 pt-4 pb-0 px-2 bg-gray-50 rounded border border-gray-100">
@@ -80,10 +138,10 @@ watch(currentRangeValue, (newVal, oldVal) => {
       <!-- Left Column: Pages & Sources -->
       <div class="space-y-8">
         <div>
-           <MetricList type="url" label="Visitors per Page" :start-at="currentRange.startAt" :end-at="currentRange.endAt" />
+           <MetricList label="Visitors per Page" :data="metricsData['url'] ?? []" :loading="metricsLoading" />
         </div>
         <div>
-           <MetricList type="referrer" label="Sources" :start-at="currentRange.startAt" :end-at="currentRange.endAt" />
+           <MetricList label="Sources" :data="metricsData['referrer'] ?? []" :loading="metricsLoading" />
         </div>
       </div>
       
@@ -108,7 +166,7 @@ watch(currentRangeValue, (newVal, oldVal) => {
               Device
             </button>
           </div>
-          <MetricList :type="envTab" :start-at="currentRange.startAt" :end-at="currentRange.endAt" />
+          <MetricList :data="metricsData[envTab] ?? []" :loading="metricsLoading" />
         </div>
         
         <!-- Location Group -->
@@ -130,7 +188,7 @@ watch(currentRangeValue, (newVal, oldVal) => {
               City
             </button>
           </div>
-          <MetricList :type="locTab" :start-at="currentRange.startAt" :end-at="currentRange.endAt" />
+          <MetricList :data="metricsData[locTab] ?? []" :loading="metricsLoading" />
         </div>
         
       </div>
