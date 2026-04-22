@@ -6,6 +6,6 @@ declare global {
       getActionUrl: (path: string) => string;
       csrfTokenValue: string;
       csrfTokenName: string;
-    }
+    };
   }
 }

@@ -18,7 +18,7 @@ const chartData = computed<DataRecord[]>(() => {
     return props.pageviews.pageviews.map((pv: any) => ({
         x: new Date(pv.t || pv.x).getTime(),
         y: Number(pv.y)
-    })).filter(d => !isNaN(d.x) && !isNaN(d.y));
+    })).filter((d: DataRecord) => !isNaN(d.x) && !isNaN(d.y));
 });
 
 // Format the timestamp as a readable date for the X-axis
