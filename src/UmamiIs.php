@@ -26,6 +26,7 @@ class UmamiIs extends Plugin
 {
     public string $schemaVersion = '1.0.0';
     public bool $hasCpSettings = true;
+    public bool $hasCpSection = true;
 
     public static function config(): array
     {
@@ -44,7 +45,7 @@ class UmamiIs extends Plugin
 
         // Any code that creates an element query or loads Twig should be deferred until
         // after Craft is fully initialized, to avoid conflicts with other plugins/modules
-        Craft::$app->onInit(function() {
+        Craft::$app->onInit(function () {
             // ...
         });
     }
@@ -66,7 +67,7 @@ class UmamiIs extends Plugin
     {
         // Register event handlers here ...
         // (see https://craftcms.com/docs/5.x/extend/events.html to get started)
-        Event::on(Dashboard::class, Dashboard::EVENT_REGISTER_WIDGET_TYPES, function(RegisterComponentTypesEvent $event) {
+        Event::on(Dashboard::class, Dashboard::EVENT_REGISTER_WIDGET_TYPES, function (RegisterComponentTypesEvent $event) {
             $event->types[] = UmamiIsWidget::class;
         });
     }

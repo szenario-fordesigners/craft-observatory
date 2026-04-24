@@ -1,0 +1,56 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Umami Analytics" %}
+{% set plugin = craft.app.plugins.getPlugin('umami-is') %}
+{% set stats = plugin.analytics.getDailyStatsReport(30) %}
+
+{% block content %}
+	<p>Daily totals for the last 30 days. The "Source" column shows whether data was loaded blazingly fast from your local database or fetched live from the Umami API.</p>
+
+	<div class="tablepane">
+		<table class="data fullwidth">
+			<thead>
+				<tr>
+					<th>Date</th>
+					<th>Pageviews</th>
+					<th>Visitors</th>
+					<th>Visits</th>
+					<th>Bounces</th>
+					<th>Total Time (s)</th>
+					<th>Source</th>
+				</tr>
+			</thead>
+			<tbody>
+				{% for row in stats %}
+					<tr>
+						<td>
+							<strong>{{ row.date|date('Y-m-d') }}</strong>
+							{% if row.date == now|date('Y-m-d') %}(Today)
+							{% endif %}
+						</td>
+						<td>{{ row.pageviews }}</td>
+						<td>{{ row.visitors }}</td>
+						<td>{{ row.visits }}</td>
+						<td>{{ row.bounces }}</td>
+						<td>{{ row.totaltime }}
+							<span class="light">s</span>
+						</td>
+						<td>
+							{% if row.source == 'DB' %}
+								<span class="status green"></span>
+								DB
+							{% else %}
+								<span class="status yellow"></span>
+								API
+							{% endif %}
+						</td>
+					</tr>
+				{% else %}
+					<tr>
+						<td colspan="7">No metrics available. Make sure your credentials are configured correctly.</td>
+					</tr>
+				{% endfor %}
+			</tbody>
+		</table>
+	</div>
+{% endblock %}
