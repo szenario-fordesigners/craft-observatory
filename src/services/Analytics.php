@@ -6,6 +6,7 @@ use Craft;
 use craft\base\Component;
 use craft\helpers\App;
 use GuzzleHttp\Exception\GuzzleException;
+use szenario\craftumamiis\records\DailyStats;
 use szenario\craftumamiis\UmamiIs;
 
 /**
@@ -78,6 +79,132 @@ class Analytics extends Component
         }
 
         return null;
+    }
+
+    /**
+     * Saves daily stats retrieved from Umami into the local database.
+     * 
+     * @param string $date The date in 'Y-m-d' format
+     * @param array $stats The raw stats array from the API
+     * @return bool True if successful, false otherwise.
+     */
+    public function syncDailyStats(string $date, array $stats, array $metrics = []): bool
+    {
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+
+        if (empty($websiteId)) {
+            Craft::error('Cannot sync stats without an Umami Website ID.', __METHOD__);
+            return false;
+        }
+
+        // See if a record already exists for this website and date
+        $record = DailyStats::findOne([
+            'websiteId' => $websiteId,
+            'date' => $date,
+        ]);
+
+        if (!$record) {
+            $record = new DailyStats();
+            $record->websiteId = $websiteId;
+            $record->date = $date;
+        }
+
+        // Extract values (handle potentially missing keys gracefully depending on API response format)
+        $record->pageviews = (int) ($stats['pageviews'] ?? 0);
+        $record->visitors = (int) ($stats['visitors'] ?? 0);
+        $record->visits = (int) ($stats['visits'] ?? 0);
+        $record->bounces = (int) ($stats['bounces'] ?? 0);
+        $record->totaltime = (int) ($stats['totaltime'] ?? 0);
+        
+        if (!empty($metrics)) {
+            $record->metrics = json_encode($metrics);
+        }
+
+        if (!$record->save()) {
+            Craft::error("Failed to save daily stats for {$date}: " . json_encode($record->getErrors()), __METHOD__);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get a daily stats report for the last X days.
+     * Returns an array of stats per day, including whether it came from the DB or the API.
+     *
+     * @param int $days Number of days to include (including today)
+     * @return array
+     */
+    public function getDailyStatsReport(int $days = 30): array
+    {
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+
+        if (empty($websiteId)) {
+            return [];
+        }
+
+        $report = [];
+        $todayStr = date('Y-m-d');
+
+        // Pre-fetch all available DB records for the requested timeframe
+        $startDateStr = date('Y-m-d', strtotime("-" . ($days - 1) . " days"));
+
+        $dbRecords = DailyStats::find()
+            ->where(['websiteId' => $websiteId])
+            ->andWhere(['>=', 'date', $startDateStr])
+            ->indexBy('date')
+            ->all();
+
+        for ($i = 0; $i < $days; $i++) {
+            $dateStr = date('Y-m-d', strtotime("-{$i} days"));
+            $isToday = ($dateStr === $todayStr);
+
+            if (!$isToday && isset($dbRecords[$dateStr])) {
+                $record = $dbRecords[$dateStr];
+                $report[] = [
+                    'date' => $dateStr,
+                    'pageviews' => $record->pageviews,
+                    'visitors' => $record->visitors,
+                    'visits' => $record->visits,
+                    'bounces' => $record->bounces,
+                    'totaltime' => $record->totaltime,
+                    'metrics' => $record->metrics ? json_decode($record->metrics, true) : [],
+                    'source' => 'DB',
+                ];
+            } else {
+                // Fetch from API
+                $startAt = strtotime($dateStr . ' midnight') * 1000;
+                $endAt = $isToday ? (time() * 1000) : (strtotime($dateStr . ' 23:59:59') * 1000);
+
+                $stats = $this->getStats($startAt, $endAt);
+
+                $pageviews = (int) ($stats['pageviews'] ?? 0);
+                $visitors = (int) ($stats['visitors'] ?? 0);
+                $visits = (int) ($stats['visits'] ?? 0);
+                $bounces = (int) ($stats['bounces'] ?? 0);
+                $totaltime = (int) ($stats['totaltime'] ?? 0);
+
+                $report[] = [
+                    'date' => $dateStr,
+                    'pageviews' => $pageviews,
+                    'visitors' => $visitors,
+                    'visits' => $visits,
+                    'bounces' => $bounces,
+                    'totaltime' => $totaltime,
+                    'metrics' => [],
+                    'source' => 'API',
+                ];
+
+                // If it's a past day missing from the DB, sync it now
+                if (!$isToday && $stats) {
+                    $this->syncDailyStats($dateStr, $stats);
+                }
+            }
+        }
+
+        return $report;
     }
 
     /**     * Get statistics for the website.
