@@ -2,13 +2,12 @@ import './assets/tailwind.css';
 import './assets/main.scss';
 
 import { createApp } from 'vue';
-import App from './App.vue';
+import CpApp from './CpApp.vue';
 
-// dom content loaded
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('#umami-is-app').forEach((el) => {
+  document.querySelectorAll('#umami-is-cp-app').forEach((el) => {
     const props = JSON.parse((el as HTMLElement).dataset.props || '{}');
-    const app = createApp(App, props);
+    const app = createApp(CpApp, props);
     app.mount(el);
   });
 });

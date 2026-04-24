@@ -15,7 +15,7 @@ class CraftUmamiIsWidgetAsset extends AssetBundle
         CpAsset::class,
     ];
     public $js = [
-        'main.js',
+        'widget.js',
     ];
     public $css = [
         'frontend.css',
