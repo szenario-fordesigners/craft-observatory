@@ -6,6 +6,8 @@ use Craft;
 use craft\base\Component;
 use craft\helpers\App;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Pool;
+use GuzzleHttp\Psr7\Request;
 use szenario\craftumamiis\records\DailyStats;
 use szenario\craftumamiis\UmamiIs;
 
@@ -14,6 +16,138 @@ use szenario\craftumamiis\UmamiIs;
  */
 class Analytics extends Component
 {
+    /**
+     * Returns a shared Guzzle client, base URL and headers for Umami API calls.
+     *
+     * @return array{0:\GuzzleHttp\Client,1:string,2:array<string,string>}|null
+     */
+    private function getUmamiHttpContext(): ?array
+    {
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $url = rtrim(App::parseEnv($settings->umamiUrl), '/');
+        $apiKey = App::parseEnv($settings->umamiApiKey);
+
+        if (empty($websiteId) || empty($url) || empty($apiKey)) {
+            Craft::error('Umami settings are incomplete. Website ID, URL and API Key are required.', __METHOD__);
+            return null;
+        }
+
+        $cleanUrl = preg_replace('#/(api|v1)/?$#', '', $url);
+        $baseUrl = "{$cleanUrl}/v1/websites/{$websiteId}";
+
+        $headers = [
+            'Accept' => 'application/json',
+            'x-umami-api-key' => $apiKey,
+        ];
+
+        $client = Craft::createGuzzleClient([
+            'timeout' => 10.0,
+            'connect_timeout' => 3.0,
+        ]);
+
+        return [$client, $baseUrl, $headers];
+    }
+
+    /**
+     * Fetches stats and metrics for many days concurrently.
+     *
+     * @param array<int,array{date:string,startAt:int,endAt:int}> $days
+     * @param string[] $metricsTypes
+     * @param int $concurrency
+     * @return array<string,array{stats:?array,metrics:array,errors:array<int,string>}>
+     */
+    public function getDailyStatsAndMetricsBatch(array $days, array $metricsTypes, int $concurrency = 8): array
+    {
+        $ctx = $this->getUmamiHttpContext();
+        if ($ctx === null) {
+            return [];
+        }
+
+        [$client, $baseUrl, $headers] = $ctx;
+
+        $results = [];
+        foreach ($days as $day) {
+            $results[$day['date']] = [
+                'stats' => null,
+                'metrics' => [],
+                'errors' => [],
+            ];
+        }
+
+        $requests = function () use ($days, $metricsTypes, $baseUrl, $headers) {
+            foreach ($days as $day) {
+                $date = $day['date'];
+                $startAt = $day['startAt'];
+                $endAt = $day['endAt'];
+
+                $statsUri = "{$baseUrl}/stats?startAt={$startAt}&endAt={$endAt}";
+                yield "stats:{$date}" => new Request('GET', $statsUri, $headers);
+
+                foreach ($metricsTypes as $type) {
+                    $metricsUri = "{$baseUrl}/metrics?startAt={$startAt}&endAt={$endAt}&type=" . rawurlencode($type);
+                    yield "metrics:{$date}:{$type}" => new Request('GET', $metricsUri, $headers);
+                }
+            }
+        };
+
+        $pool = new Pool($client, $requests(), [
+            'concurrency' => max(1, $concurrency),
+            'fulfilled' => function ($response, $index) use (&$results) {
+                $key = (string) $index;
+                $body = json_decode($response->getBody()->getContents(), true);
+
+                if (!is_array($body)) {
+                    return;
+                }
+
+                if (str_starts_with($key, 'stats:')) {
+                    $date = substr($key, strlen('stats:'));
+                    if (isset($results[$date])) {
+                        $results[$date]['stats'] = $body;
+                    }
+                    return;
+                }
+
+                if (str_starts_with($key, 'metrics:')) {
+                    // metrics:<date>:<type>
+                    $parts = explode(':', $key, 3);
+                    $date = $parts[1] ?? null;
+                    $type = $parts[2] ?? null;
+                    if ($date && $type && isset($results[$date])) {
+                        $results[$date]['metrics'][$type] = $body;
+                    }
+                }
+            },
+            'rejected' => function ($reason, $index) use (&$results) {
+                $key = (string) $index;
+
+                if (str_starts_with($key, 'stats:')) {
+                    $date = substr($key, strlen('stats:'));
+                    if (isset($results[$date])) {
+                        $results[$date]['errors'][] = "Stats request failed: {$reason}";
+                    }
+                    return;
+                }
+
+                if (str_starts_with($key, 'metrics:')) {
+                    $parts = explode(':', $key, 3);
+                    $date = $parts[1] ?? null;
+                    $type = $parts[2] ?? null;
+                    if ($date && isset($results[$date])) {
+                        $typeLabel = $type ? " ({$type})" : '';
+                        $results[$date]['errors'][] = "Metrics request failed{$typeLabel}: {$reason}";
+                    }
+                }
+            },
+        ]);
+
+        // Execute all requests. Pool uses curl_multi under the hood.
+        $pool->promise()->wait();
+
+        return $results;
+    }
+
     /**
      * Get the number of active users on the website.
      *

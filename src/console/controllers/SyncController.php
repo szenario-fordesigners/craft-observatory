@@ -23,40 +23,54 @@ class SyncController extends Controller
 
     /**
      * Hand-pull the last X days from Umami and save to the local db. 
-     * Defaults to last 30 days. Example: `craft umami-is/sync/historical 30`
+     * Defaults to last 30 days.
+     * Example: `craft umami-is/sync/historical 30 8`
      * 
      * @param int $days Number of days to pull
+     * @param int $concurrency Number of concurrent requests
      * @return int
      */
-    public function actionHistorical(int $days = 30): int
+    public function actionHistorical(int $days = 30, int $concurrency = 8): int
     {
-        $this->stdout("Starting sync for the last {$days} days of Umami stats...\n");
+        $this->stdout("Starting sync for the last {$days} days of Umami stats (concurrency {$concurrency})...\n");
 
         $analytics = UmamiIs::getInstance()->analytics;
         $successCount = 0;
 
+        $daySpecs = [];
         for ($i = 1; $i <= $days; $i++) {
             $dateStr = date('Y-m-d', strtotime("-{$i} days"));
             $startAt = strtotime($dateStr . ' midnight') * 1000;
             $endAt = strtotime($dateStr . ' 23:59:59') * 1000;
 
+            $daySpecs[] = [
+                'date' => $dateStr,
+                'startAt' => $startAt,
+                'endAt' => $endAt,
+            ];
+        }
+
+        $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
+
+        $batch = $analytics->getDailyStatsAndMetricsBatch($daySpecs, $metricsTypes, $concurrency);
+
+        foreach ($daySpecs as $day) {
+            $dateStr = $day['date'];
             $this->stdout("Fetching: {$dateStr}... ");
 
-            $stats = $analytics->getStats($startAt, $endAt);
+            $row = $batch[$dateStr] ?? null;
+            $stats = $row['stats'] ?? null;
+            $metrics = $row['metrics'] ?? [];
+            $errors = $row['errors'] ?? [];
 
             if (empty($stats)) {
                 $this->stderr("Failed to load basic stats.\n");
-                continue;
-            }
-
-            // Fetch metrics
-            $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
-            $metrics = [];
-            foreach ($metricsTypes as $type) {
-                $typeData = $analytics->getMetrics($startAt, $endAt, $type);
-                if (is_array($typeData)) {
-                    $metrics[$type] = $typeData;
+                if (!empty($errors)) {
+                    foreach ($errors as $err) {
+                        $this->stderr("  - {$err}\n");
+                    }
                 }
+                continue;
             }
 
             $success = $analytics->syncDailyStats($dateStr, $stats, $metrics);
