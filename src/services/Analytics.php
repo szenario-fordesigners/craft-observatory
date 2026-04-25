@@ -8,6 +8,7 @@ use craft\helpers\App;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Pool;
 use GuzzleHttp\Psr7\Request;
+use szenario\craftumamiis\jobs\SyncMissingDaysJob;
 use szenario\craftumamiis\records\DailyStats;
 use szenario\craftumamiis\UmamiIs;
 
@@ -213,6 +214,52 @@ class Analytics extends Component
         }
 
         return null;
+    }
+
+    /**
+     * Queues a background job to sync any historical days missing from the local DB.
+     * Render-path cost: one indexed query for MAX(dateUpdated) plus at most one queue insert.
+     * Today is always skipped — it's still accumulating and handled by the live widget queries.
+     *
+     * @param int $days How many days back to check (excluding today).
+     * @param int $throttleSeconds Minimum seconds between sync attempts. Derived from MAX(dateUpdated) on DailyStats.
+     * @return bool True if a job was queued, false if throttled or already pending.
+     */
+    public function autoSyncMissingDays(int $days = 30, int $throttleSeconds = 900): bool
+    {
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+
+        if (empty($websiteId)) {
+            Craft::warning('autoSyncMissingDays skipped: no websiteId configured.', 'umami-is');
+            return false;
+        }
+
+        $lastUpdatedStr = DailyStats::find()
+            ->where(['websiteId' => $websiteId])
+            ->max('dateUpdated');
+
+        if ($lastUpdatedStr !== null && time() - strtotime($lastUpdatedStr) < $throttleSeconds) {
+            $age = time() - strtotime($lastUpdatedStr);
+            Craft::debug("autoSyncMissingDays throttled: last sync {$age}s ago (window {$throttleSeconds}s).", 'umami-is');
+            return false;
+        }
+
+        // Dedupe pending jobs across rapid concurrent renders. The job itself clears this key on completion.
+        $cache = Craft::$app->getCache();
+        $pendingKey = "umami_autosync_pending_{$websiteId}";
+        if (!$cache->add($pendingKey, 1, $throttleSeconds)) {
+            Craft::debug('autoSyncMissingDays skipped: a sync job is already pending.', 'umami-is');
+            return false;
+        }
+
+        Craft::$app->getQueue()->push(new SyncMissingDaysJob([
+            'websiteId' => $websiteId,
+            'days' => $days,
+        ]));
+
+        Craft::info("Queued SyncMissingDaysJob for websiteId={$websiteId}, days={$days}.", 'umami-is');
+        return true;
     }
 
     /**
