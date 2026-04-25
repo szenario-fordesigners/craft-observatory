@@ -50,6 +50,8 @@ class UmamiIsWidget extends Widget
     {
         Craft::$app->getView()->registerAssetBundle(CraftUmamiIsWidgetAsset::class);
 
+        \szenario\craftumamiis\UmamiIs::getInstance()->analytics->autoSyncMissingDays();
+
         // Snap to end of today
         $endAt = strtotime('today 23:59:59') * 1000;
         $unit = 'hour';
