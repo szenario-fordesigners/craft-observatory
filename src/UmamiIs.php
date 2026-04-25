@@ -6,7 +6,10 @@ use Craft;
 use craft\base\Model;
 use craft\base\Plugin;
 use craft\events\RegisterComponentTypesEvent;
+use craft\helpers\App;
+use craft\log\MonologTarget;
 use craft\services\Dashboard;
+use Psr\Log\LogLevel;
 use szenario\craftumamiis\models\Settings;
 use szenario\craftumamiis\services\Analytics;
 use szenario\craftumamiis\widgets\UmamiIsWidget;
@@ -41,6 +44,7 @@ class UmamiIs extends Plugin
     {
         parent::init();
 
+        $this->registerLogTarget();
         $this->attachEventHandlers();
 
         // Any code that creates an element query or loads Twig should be deferred until
@@ -61,6 +65,30 @@ class UmamiIs extends Plugin
             'plugin' => $this,
             'settings' => $this->getSettings(),
         ]);
+    }
+
+    private function registerLogTarget(): void
+    {
+        $log = Craft::$app->getLog();
+        $targets = $log->targets;
+
+        foreach ($targets as $target) {
+            if ($target instanceof MonologTarget && $target->name === 'umami-is') {
+                return;
+            }
+        }
+
+        $targets[] = Craft::createObject([
+            'class' => MonologTarget::class,
+            'name' => 'umami-is',
+            'extractExceptionTrace' => !App::devMode(),
+            'allowLineBreaks' => App::devMode(),
+            'level' => App::devMode() ? LogLevel::DEBUG : LogLevel::INFO,
+            'categories' => ['umami-is'],
+            'logContext' => App::devMode(),
+        ]);
+
+        $log->targets = $targets;
     }
 
     private function attachEventHandlers(): void
