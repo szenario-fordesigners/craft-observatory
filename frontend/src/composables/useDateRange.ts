@@ -1,17 +1,24 @@
 import { ref, computed } from 'vue';
 import {
   startOfDay, endOfDay,
-  subHours, subDays, subMonths,
+  subDays, subMonths,
   startOfWeek, endOfWeek,
   startOfMonth, endOfMonth,
   startOfYear, endOfYear,
-  subYears
+  differenceInCalendarDays,
+  format,
+  parseISO,
 } from 'date-fns';
 
 export type RangeValue = 
   | 'today' | '24h' | 'this_week' | '7d' 
   | 'this_month' | '30d' | '90d' 
-  | 'this_year' | '6m' | '12m' | 'all';
+  | 'this_year' | '6m' | '12m' | 'all' | 'custom';
+
+export interface CustomDateRange {
+  startDate: string;
+  endDate: string;
+}
 
 export interface DateRange {
   label: string;
@@ -21,10 +28,22 @@ export interface DateRange {
   unit: 'hour' | 'day' | 'month' | 'year';
 }
 
+const getCustomRangeUnit = (startDate: Date, endDate: Date): DateRange['unit'] => {
+  const days = Math.abs(differenceInCalendarDays(endDate, startDate)) + 1;
+
+  if (days <= 2) return 'hour';
+  if (days <= 365) return 'day';
+  return 'month';
+};
+
 export function useDateRange(initialRange: RangeValue = '24h') {
   const currentRangeValue = ref<RangeValue>(initialRange);
+  const customRange = ref<CustomDateRange>({
+    startDate: format(subDays(new Date(), 6), 'yyyy-MM-dd'),
+    endDate: format(new Date(), 'yyyy-MM-dd'),
+  });
 
-  const ranges: Record<RangeValue, Omit<DateRange, 'value'>> = {
+  const ranges: Record<Exclude<RangeValue, 'custom'>, Omit<DateRange, 'value'>> = {
     'today': {
       label: 'Today',
       startAt: startOfDay(new Date()).getTime(),
@@ -94,13 +113,35 @@ export function useDateRange(initialRange: RangeValue = '24h') {
   };
 
   const availableRanges = computed(() => {
-    return Object.entries(ranges).map(([key, data]) => ({
+    return [
+      ...Object.entries(ranges).map(([key, data]) => ({
       value: key as RangeValue,
       ...data
-    }));
+      })),
+      {
+        label: 'Custom range',
+        value: 'custom' as RangeValue,
+        startAt: currentRange.value.startAt,
+        endAt: currentRange.value.endAt,
+        unit: currentRange.value.unit,
+      },
+    ];
   });
 
   const currentRange = computed<DateRange>(() => {
+    if (currentRangeValue.value === 'custom') {
+      const startDate = startOfDay(parseISO(customRange.value.startDate));
+      const endDate = endOfDay(parseISO(customRange.value.endDate));
+
+      return {
+        label: 'Custom range',
+        value: 'custom',
+        startAt: startDate.getTime(),
+        endAt: endDate.getTime(),
+        unit: getCustomRangeUnit(startDate, endDate),
+      };
+    }
+
     return {
       value: currentRangeValue.value,
       ...ranges[currentRangeValue.value]
@@ -111,10 +152,17 @@ export function useDateRange(initialRange: RangeValue = '24h') {
     currentRangeValue.value = val;
   };
 
+  const setCustomRange = (range: CustomDateRange) => {
+    customRange.value = range;
+    currentRangeValue.value = 'custom';
+  };
+
   return {
     currentRangeValue,
     currentRange,
+    customRange,
     availableRanges,
-    setRange
+    setRange,
+    setCustomRange
   };
 }

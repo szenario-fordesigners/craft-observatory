@@ -1,18 +1,28 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { useDateRange, type RangeValue } from '../composables/useDateRange';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
+import { useDateRange, type CustomDateRange, type RangeValue } from '../composables/useDateRange';
 
-defineProps({
+const props = defineProps({
   modelValue: {
     type: String as () => RangeValue,
     required: true
-  }
+  },
+  customRange: {
+    type: Object as () => CustomDateRange,
+    required: true,
+  },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits<{
+  'update:modelValue': [value: RangeValue];
+  'update:customRange': [value: CustomDateRange];
+}>();
 
 const { availableRanges } = useDateRange();
+const presetRanges = computed(() => availableRanges.value.filter((range) => range.value !== 'custom'));
 const isOpen = ref(false);
+const customStartDate = ref(props.customRange.startDate);
+const customEndDate = ref(props.customRange.endDate);
 
 const toggleDropdown = () => {
   isOpen.value = !isOpen.value;
@@ -23,9 +33,32 @@ const selectRange = (value: RangeValue) => {
   isOpen.value = false;
 };
 
+const applyCustomRange = () => {
+  if (!customStartDate.value || !customEndDate.value) return;
+
+  const startDate = customStartDate.value <= customEndDate.value ? customStartDate.value : customEndDate.value;
+  const endDate = customStartDate.value <= customEndDate.value ? customEndDate.value : customStartDate.value;
+
+  emit('update:customRange', { startDate, endDate });
+  emit('update:modelValue', 'custom');
+  isOpen.value = false;
+};
+
 const getLabel = (val: string) => {
+  if (val === 'custom') {
+    return `${props.customRange.startDate} - ${props.customRange.endDate}`;
+  }
+
   return availableRanges.value.find(r => r.value === val)?.label || 'Select range';
 };
+
+watch(
+  () => props.customRange,
+  (range) => {
+    customStartDate.value = range.startDate;
+    customEndDate.value = range.endDate;
+  },
+);
 
 // Close dropdown on outside click
 const dropdownRef = ref<HTMLElement | null>(null);
@@ -75,7 +108,7 @@ onUnmounted(() => {
       >
         <div class="py-1">
           <button
-            v-for="range in availableRanges"
+            v-for="range in presetRanges"
             :key="range.value"
             @click="selectRange(range.value)"
             class="group flex items-center justify-between w-full px-4 py-2 text-sm text-left hover:bg-gray-100"
@@ -85,6 +118,32 @@ onUnmounted(() => {
             <svg v-if="modelValue === range.value" class="h-4 w-4 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
             </svg>
+          </button>
+        </div>
+        <div class="space-y-3 px-4 py-3">
+          <div class="text-sm font-semibold text-gray-700">Custom range</div>
+          <label class="block text-xs font-medium text-gray-500">
+            From
+            <input
+              v-model="customStartDate"
+              type="date"
+              class="mt-1 block w-full rounded border border-gray-300 px-2 py-1 text-sm text-gray-700"
+            >
+          </label>
+          <label class="block text-xs font-medium text-gray-500">
+            To
+            <input
+              v-model="customEndDate"
+              type="date"
+              class="mt-1 block w-full rounded border border-gray-300 px-2 py-1 text-sm text-gray-700"
+            >
+          </label>
+          <button
+            type="button"
+            class="w-full rounded bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-700"
+            @click="applyCustomRange"
+          >
+            Apply custom range
           </button>
         </div>
       </div>

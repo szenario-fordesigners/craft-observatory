@@ -13,7 +13,7 @@ const props = defineProps<{
   defaultPeriod?: string;
 }>();
 
-const { currentRangeValue, currentRange } = useDateRange(
+const { currentRangeValue, currentRange, customRange, setCustomRange } = useDateRange(
   (props.defaultPeriod as RangeValue) || '24h',
 );
 const currentData = ref<WebsitePageviews | null>(props.pageviews);
@@ -98,11 +98,9 @@ onUnmounted(() => {
 });
 
 watch(
-  currentRangeValue,
-  (newVal, oldVal) => {
-    if (newVal !== oldVal) {
-      fetchDashboardData(oldVal !== undefined || !currentData.value);
-    }
+  () => [currentRange.value.startAt, currentRange.value.endAt, currentRange.value.unit] as const,
+  (_newVal, oldVal) => {
+    fetchDashboardData(oldVal !== undefined || !currentData.value);
   },
   { immediate: true },
 );
@@ -112,7 +110,11 @@ watch(
   <div id="umami-is-wrapper" class="rounded-lg border border-gray-200 bg-white p-6">
     <div class="mb-6 flex items-center justify-between">
       <h1 class="m-0 text-xl font-bold text-gray-800">{{ title }}</h1>
-      <DateRangeSelector v-model="currentRangeValue" />
+      <DateRangeSelector
+        v-model="currentRangeValue"
+        :custom-range="customRange"
+        @update:custom-range="setCustomRange"
+      />
     </div>
 
     <!-- KPI Stats -->
