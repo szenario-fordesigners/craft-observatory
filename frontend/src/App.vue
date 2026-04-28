@@ -25,65 +25,66 @@ const locTab = ref<'country' | 'region' | 'city'>('country');
 const metricsData = ref<Record<string, WebsiteMetric[]>>({});
 const metricsLoading = ref(false);
 
-const fetchAllMetrics = async () => {
-  metricsLoading.value = true;
-  try {
-    const url = new URL(window.Craft.getActionUrl('umami-is/dashboard/get-metrics'), window.location.origin);
-    url.searchParams.append('types', 'url,referrer,browser,os,device,country,region,city');
-    url.searchParams.append('startAt', currentRange.value.startAt.toString());
-    url.searchParams.append('endAt', currentRange.value.endAt.toString());
+interface DashboardDataResponse {
+  pageviews?: WebsitePageviews | null;
+  stats?: WebsiteStats | null;
+  metrics?: Record<string, WebsiteMetric[]>;
+}
 
-    const response = await fetch(url.toString(), {
-      headers: { 'Accept': 'application/json' },
-    });
-    
-    if (response.ok) {
-        metricsData.value = await response.json();
-    }
-  } catch (e) {
-    console.error('Error fetching metrics', e);
-  } finally {
-    metricsLoading.value = false;
-  }
-};
+let dashboardAbortController: AbortController | null = null;
+let dashboardRequestId = 0;
 
-const fetchStats = async () => {
+const fetchDashboardData = async (includePageviews = true) => {
+  dashboardAbortController?.abort();
+
+  const requestId = ++dashboardRequestId;
+  const abortController = new AbortController();
+  dashboardAbortController = abortController;
+
   statsLoading.value = true;
-  try {
-    const url = new URL(window.Craft.getActionUrl('umami-is/dashboard/get-stats'), window.location.origin);
-    url.searchParams.append('startAt', currentRange.value.startAt.toString());
-    url.searchParams.append('endAt', currentRange.value.endAt.toString());
+  metricsLoading.value = true;
 
-    const response = await fetch(url.toString(), {
-      headers: { 'Accept': 'application/json' },
-    });
-    if (response.ok) {
-      statsData.value = await response.json();
-    }
-  } catch (e) {
-    console.error('Error fetching stats', e);
-  } finally {
-    statsLoading.value = false;
-  }
-};
-
-const fetchPageviews = async () => {
   try {
-    const url = new URL(window.Craft.getActionUrl('umami-is/dashboard/get-pageviews'), window.location.origin);
+    const url = new URL(window.Craft.getActionUrl('umami-is/dashboard/get-dashboard-data'), window.location.origin);
     url.searchParams.append('startAt', currentRange.value.startAt.toString());
     url.searchParams.append('endAt', currentRange.value.endAt.toString());
     url.searchParams.append('unit', currentRange.value.unit);
+    url.searchParams.append('includePageviews', includePageviews ? '1' : '0');
 
     const response = await fetch(url.toString(), {
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: { 'Accept': 'application/json' },
+      signal: abortController.signal,
     });
+
     if (response.ok) {
-      currentData.value = await response.json();
+      const data = await response.json() as DashboardDataResponse;
+
+      if (requestId !== dashboardRequestId) {
+        return;
+      }
+
+      if (includePageviews) {
+        currentData.value = data.pageviews ?? null;
+      }
+
+      statsData.value = data.stats ?? null;
+      metricsData.value = data.metrics ?? {};
     }
   } catch (e) {
-    console.error('Error fetching updated pageviews:', e);
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return;
+    }
+
+    console.error('Error fetching dashboard data', e);
+  } finally {
+    if (requestId === dashboardRequestId) {
+      statsLoading.value = false;
+      metricsLoading.value = false;
+
+      if (dashboardAbortController === abortController) {
+        dashboardAbortController = null;
+      }
+    }
   }
 };
 
@@ -91,9 +92,7 @@ let intervalId: number;
 
 onMounted(() => {
   intervalId = window.setInterval(() => {
-    fetchPageviews();
-    fetchAllMetrics();
-    fetchStats();
+    fetchDashboardData();
   }, 60000);
 });
 
@@ -101,13 +100,13 @@ onUnmounted(() => {
   if (intervalId) {
     window.clearInterval(intervalId);
   }
+
+  dashboardAbortController?.abort();
 });
 
 watch(currentRangeValue, (newVal, oldVal) => {
   if (newVal !== oldVal) {
-    fetchPageviews();
-    fetchAllMetrics();
-    fetchStats();
+    fetchDashboardData(oldVal !== undefined || !currentData.value);
   }
 }, { immediate: true });
 </script>

@@ -222,7 +222,7 @@ class UmamiClient extends Component
      * @param int $endAt Timestamp (in ms)
      * @param int $cacheDuration Cache duration in seconds
      */
-    public function getStats(int $startAt, int $endAt, int $cacheDuration = 300): ?array
+    public function getStats(int $startAt, int $endAt, int $cacheDuration = 60): ?array
     {
         $settings = UmamiIs::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
@@ -255,9 +255,86 @@ class UmamiClient extends Component
             '/pageviews',
             ['startAt' => $startAt, 'endAt' => $endAt, 'unit' => $unit],
             "umami_pageviews_{$websiteId}_{$startAt}_{$endAt}_{$unit}",
-            300,
+            60,
         );
         return isset($body['pageviews']) ? $body : null;
+    }
+
+    /**
+     * @param int $startAt Timestamp (in ms)
+     * @param int $endAt Timestamp (in ms)
+     * @param string[] $types Metric types to fetch.
+     * @return array<string,array<mixed>>
+     */
+    public function getMetricsBatch(int $startAt, int $endAt, array $types, int $cacheDuration = 60, int $concurrency = 8): array
+    {
+        $types = array_values(array_unique(array_filter(array_map('trim', $types))));
+        $results = array_fill_keys($types, []);
+
+        if (empty($types)) {
+            return $results;
+        }
+
+        $ctx = $this->getUmamiHttpContext();
+        if ($ctx === null) {
+            return $results;
+        }
+
+        [$client, $baseUrl, $headers, $websiteId] = $ctx;
+        $cache = Craft::$app->getCache();
+        $missing = [];
+
+        foreach ($types as $type) {
+            $cacheKey = "umami_metrics_{$websiteId}_{$startAt}_{$endAt}_{$type}";
+            $cached = $cache->get($cacheKey);
+            if ($cached !== false && \is_array($cached)) {
+                $results[$type] = $cached;
+                continue;
+            }
+
+            $missing[$type] = $cacheKey;
+        }
+
+        if (empty($missing)) {
+            return $results;
+        }
+
+        $requests = function () use ($missing, $baseUrl, $headers, $startAt, $endAt) {
+            foreach ($missing as $type => $_cacheKey) {
+                $metricsUri = "{$baseUrl}/metrics?startAt={$startAt}&endAt={$endAt}&type=" . rawurlencode((string) $type);
+                yield (string) $type => new Request('GET', $metricsUri, $headers);
+            }
+        };
+
+        $pool = new Pool($client, $requests(), [
+            'concurrency' => max(1, $concurrency),
+            'fulfilled' => function ($response, $index) use (&$results, $missing, $cache, $cacheDuration) {
+                $type = (string) $index;
+                $body = json_decode($response->getBody()->getContents(), true);
+
+                if (!\is_array($body)) {
+                    Craft::error("Unexpected Umami metrics response for {$type}: " . print_r($body, true), __METHOD__);
+                    return;
+                }
+
+                $results[$type] = $body;
+
+                if ($cacheDuration > 0 && isset($missing[$type])) {
+                    $cache->set($missing[$type], $body, $cacheDuration);
+                }
+            },
+            'rejected' => function ($reason, $index) {
+                Craft::error("Umami metrics request ({$index}) failed: {$reason}", __METHOD__);
+            },
+        ]);
+
+        try {
+            $pool->promise()->wait();
+        } catch (\Throwable $e) {
+            Craft::error("Umami metrics batch request failed: {$e->getMessage()}", __METHOD__);
+        }
+
+        return $results;
     }
 
     /**
@@ -277,7 +354,7 @@ class UmamiClient extends Component
             '/metrics',
             ['startAt' => $startAt, 'endAt' => $endAt, 'type' => $type],
             "umami_metrics_{$websiteId}_{$startAt}_{$endAt}_{$type}",
-            300,
+            60,
         );
     }
 }
