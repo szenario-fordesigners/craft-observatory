@@ -39,9 +39,8 @@ class SyncController extends Controller
 
         $daySpecs = [];
         for ($i = 1; $i <= $days; $i++) {
-            $dateStr = date('Y-m-d', strtotime("-{$i} days"));
-            $startAt = strtotime($dateStr . ' midnight') * 1000;
-            $endAt = strtotime($dateStr . ' 23:59:59') * 1000;
+            $dateStr = $analytics->dateOffset($i);
+            [$startAt, $endAt] = $analytics->dayBounds($dateStr);
 
             $daySpecs[] = [
                 'date' => $dateStr,

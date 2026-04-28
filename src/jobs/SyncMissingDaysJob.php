@@ -26,10 +26,10 @@ class SyncMissingDaysJob extends BaseJob
         try {
             $analytics = UmamiIs::getInstance()->analytics;
 
-            $todayStr = date('Y-m-d');
+            $todayStr = $analytics->dateOffset(0);
             $wanted = [];
             for ($i = 1; $i <= $this->days; $i++) {
-                $dateStr = date('Y-m-d', strtotime("-{$i} days"));
+                $dateStr = $analytics->dateOffset($i);
                 if ($dateStr === $todayStr) {
                     continue;
                 }
@@ -49,7 +49,7 @@ class SyncMissingDaysJob extends BaseJob
                 ->column();
 
             foreach ($existing as $existingDate) {
-                unset($wanted[date('Y-m-d', strtotime($existingDate))]);
+                unset($wanted[$existingDate]);
             }
 
             if (empty($wanted)) {
@@ -59,10 +59,11 @@ class SyncMissingDaysJob extends BaseJob
 
             $daySpecs = [];
             foreach (array_keys($wanted) as $dateStr) {
+                [$startAt, $endAt] = $analytics->dayBounds($dateStr);
                 $daySpecs[] = [
                     'date' => $dateStr,
-                    'startAt' => strtotime($dateStr . ' midnight') * 1000,
-                    'endAt' => strtotime($dateStr . ' 23:59:59') * 1000,
+                    'startAt' => $startAt,
+                    'endAt' => $endAt,
                 ];
             }
 

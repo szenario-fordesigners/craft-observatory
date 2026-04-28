@@ -370,10 +370,10 @@ class Analytics extends Component
         }
 
         $report = [];
-        $todayStr = date('Y-m-d');
+        $todayStr = $this->dateOffset(0);
 
         // Pre-fetch all available DB records for the requested timeframe
-        $startDateStr = date('Y-m-d', strtotime("-" . ($days - 1) . " days"));
+        $startDateStr = $this->dateOffset($days - 1);
 
         $dbRecords = DailyStats::find()
             ->where(['websiteId' => $websiteId])
@@ -381,8 +381,12 @@ class Analytics extends Component
             ->indexBy('date')
             ->all();
 
+        // Round endAt down to a 60s bucket so the today-call shares a cache key across renders.
+        $todayBucketSec = 60;
+        $todayEndAt = (int) (floor(time() / $todayBucketSec) * $todayBucketSec * 1000);
+
         for ($i = 0; $i < $days; $i++) {
-            $dateStr = date('Y-m-d', strtotime("-{$i} days"));
+            $dateStr = $this->dateOffset($i);
             $isToday = ($dateStr === $todayStr);
 
             if (!$isToday && isset($dbRecords[$dateStr])) {
@@ -399,10 +403,8 @@ class Analytics extends Component
                 ];
             } elseif ($isToday) {
                 // Today is still accumulating, so keep it live and out of the historical cache.
-                $startAt = strtotime($dateStr . ' midnight') * 1000;
-                $endAt = time() * 1000;
-
-                $stats = $this->getStats($startAt, $endAt, 60);
+                [$startAt, ] = $this->dayBounds($dateStr);
+                $stats = $this->getStats($startAt, $todayEndAt, $todayBucketSec);
 
                 $pageviews = (int) ($stats['pageviews'] ?? 0);
                 $visitors = (int) ($stats['visitors'] ?? 0);
@@ -496,64 +498,15 @@ class Analytics extends Component
     {
         $settings = UmamiIs::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
-
         if (empty($websiteId)) {
-            Craft::error('Umami Website ID is required.', __METHOD__);
             return null;
         }
 
-        $cacheKey = "umami_metrics_{$websiteId}_{$startAt}_{$endAt}_{$type}";
-        $cache = Craft::$app->getCache();
-
-        $cachedMetrics = $cache->get($cacheKey);
-        if ($cachedMetrics !== false) {
-            return $cachedMetrics;
-        }
-
-        $url = rtrim(App::parseEnv($settings->umamiUrl), '/');
-        $apiKey = App::parseEnv($settings->umamiApiKey);
-
-        if (empty($url) || empty($apiKey)) {
-            Craft::error('Umami settings are incomplete. URL and API Key are required.', __METHOD__);
-            return null;
-        }
-
-        $client = Craft::createGuzzleClient(['timeout' => 5.0, 'connect_timeout' => 3.0]);
-
-        try {
-            $cleanUrl = preg_replace('#/(api|v1)/?$#', '', $url);
-            $endpointUrl = "{$cleanUrl}/v1/websites/{$websiteId}/metrics";
-
-            $headers = [
-                'Accept' => 'application/json',
-                'x-umami-api-key' => $apiKey,
-            ];
-
-            $response = $client->request('GET', $endpointUrl, [
-                'headers' => $headers,
-                'query' => [
-                    'startAt' => $startAt,
-                    'endAt' => $endAt,
-                    'type' => $type,
-                ],
-            ]);
-
-            $body = json_decode($response->getBody()->getContents(), true);
-
-            // Umami metrics API returns a direct array, not wrapped in an object property,
-            // or an empty array.
-            if (is_array($body)) {
-                $cache->set($cacheKey, $body, 300); // Cache for 5 minutes
-                return $body;
-            }
-
-            Craft::error("Unexpected response from Umami API: " . print_r($body, true), __METHOD__);
-        } catch (GuzzleException $e) {
-            Craft::error("Error fetching metrics from Umami: {$e->getMessage()}", __METHOD__);
-        } catch (\Throwable $e) {
-            Craft::error("Unexpected error fetching metrics from Umami: {$e->getMessage()}", __METHOD__);
-        }
-
-        return null;
+        return $this->umamiGet(
+            '/metrics',
+            ['startAt' => $startAt, 'endAt' => $endAt, 'type' => $type],
+            "umami_metrics_{$websiteId}_{$startAt}_{$endAt}_{$type}",
+            300,
+        );
     }
 }
