@@ -14,7 +14,7 @@ class AnalyticsController extends Controller
     {
         $this->stdout("Fetching active visitors...\n");
 
-        $visitors = UmamiIs::getInstance()->analytics->getActiveVisitors();
+        $visitors = UmamiIs::getInstance()->client->getActiveVisitors();
 
         if ($visitors !== null) {
             $this->stdout("Active visitors: {$visitors}\n");

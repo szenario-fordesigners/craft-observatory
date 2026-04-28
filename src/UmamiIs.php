@@ -11,14 +11,18 @@ use craft\log\MonologTarget;
 use craft\services\Dashboard;
 use Psr\Log\LogLevel;
 use szenario\craftumamiis\models\Settings;
-use szenario\craftumamiis\services\Analytics;
+use szenario\craftumamiis\services\StatsReport;
+use szenario\craftumamiis\services\SyncCoordinator;
+use szenario\craftumamiis\services\UmamiClient;
 use szenario\craftumamiis\widgets\UmamiIsWidget;
 use yii\base\Event;
 
 /**
  * umami plugin
  *
- * @property-read Analytics $analytics
+ * @property-read UmamiClient $client
+ * @property-read StatsReport $stats
+ * @property-read SyncCoordinator $sync
  * @method static UmamiIs getInstance()
  * @method Settings getSettings()
  * @author szenario
@@ -35,7 +39,9 @@ class UmamiIs extends Plugin
     {
         return [
             'components' => [
-                'analytics' => Analytics::class,
+                'client' => UmamiClient::class,
+                'stats' => StatsReport::class,
+                'sync' => SyncCoordinator::class,
             ],
         ];
     }

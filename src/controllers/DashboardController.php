@@ -20,7 +20,7 @@ class DashboardController extends Controller
         $endAt = $request->getParam('endAt', time() * 1000);
         $unit = $request->getParam('unit', 'day');
 
-        $pageviews = UmamiIs::getInstance()->analytics->getPageviews(
+        $pageviews = UmamiIs::getInstance()->client->getPageviews(
             (int) $startAt,
             (int) $endAt,
             $unit
@@ -39,7 +39,7 @@ class DashboardController extends Controller
         $startAt = $request->getParam('startAt', strtotime('-7 days') * 1000);
         $endAt = $request->getParam('endAt', time() * 1000);
 
-        $stats = UmamiIs::getInstance()->analytics->getStats(
+        $stats = UmamiIs::getInstance()->client->getStats(
             (int) $startAt,
             (int) $endAt
         );
@@ -68,7 +68,7 @@ class DashboardController extends Controller
             $types = explode(',', (string) $typesParams);
             $metrics = [];
             foreach ($types as $type) {
-                $metrics[$type] = UmamiIs::getInstance()->analytics->getMetrics(
+                $metrics[$type] = UmamiIs::getInstance()->client->getMetrics(
                     (int) $startAt,
                     (int) $endAt,
                     trim($type)
@@ -77,7 +77,7 @@ class DashboardController extends Controller
             return $this->asJson($metrics);
         }
 
-        $metrics = UmamiIs::getInstance()->analytics->getMetrics(
+        $metrics = UmamiIs::getInstance()->client->getMetrics(
             (int) $startAt,
             (int) $endAt,
             (string) $typeParam

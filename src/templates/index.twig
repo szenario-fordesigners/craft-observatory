@@ -2,8 +2,8 @@
 
 {% set title = "Umami Analytics" %}
 {% set plugin = craft.app.plugins.getPlugin('umami-is') %}
-{% do plugin.analytics.autoSyncMissingDays() %}
-{% set stats = plugin.analytics.getDailyStatsReport(30) %}
+{% do plugin.sync.autoSyncMissingDays() %}
+{% set stats = plugin.stats.getDailyStatsReport(30) %}
 
 {% block content %}
 	{% do view.registerAssetBundle("szenario\\craftumamiis\\assetbundles\\craftumamiiscp\\CraftUmamiIsCpAsset") %}

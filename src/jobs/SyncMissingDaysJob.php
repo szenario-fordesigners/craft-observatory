@@ -4,6 +4,7 @@ namespace szenario\craftumamiis\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
+use szenario\craftumamiis\helpers\UmamiTime;
 use szenario\craftumamiis\records\DailyStats;
 use szenario\craftumamiis\UmamiIs;
 
@@ -24,12 +25,12 @@ class SyncMissingDaysJob extends BaseJob
         Craft::info("SyncMissingDaysJob starting: websiteId={$this->websiteId}, days={$this->days}.", 'umami-is');
 
         try {
-            $analytics = UmamiIs::getInstance()->analytics;
+            $plugin = UmamiIs::getInstance();
 
-            $todayStr = $analytics->dateOffset(0);
+            $todayStr = UmamiTime::dateOffset(0);
             $wanted = [];
             for ($i = 1; $i <= $this->days; $i++) {
-                $dateStr = $analytics->dateOffset($i);
+                $dateStr = UmamiTime::dateOffset($i);
                 if ($dateStr === $todayStr) {
                     continue;
                 }
@@ -59,7 +60,7 @@ class SyncMissingDaysJob extends BaseJob
 
             $daySpecs = [];
             foreach (array_keys($wanted) as $dateStr) {
-                [$startAt, $endAt] = $analytics->dayBounds($dateStr);
+                [$startAt, $endAt] = UmamiTime::dayBounds($dateStr);
                 $daySpecs[] = [
                     'date' => $dateStr,
                     'startAt' => $startAt,
@@ -72,7 +73,7 @@ class SyncMissingDaysJob extends BaseJob
             Craft::debug('SyncMissingDaysJob missing dates: ' . implode(', ', array_keys($wanted)), 'umami-is');
 
             $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
-            $batch = $analytics->getDailyStatsAndMetricsBatch($daySpecs, $metricsTypes);
+            $batch = $plugin->client->getDailyStatsAndMetricsBatch($daySpecs, $metricsTypes);
 
             $total = count($daySpecs);
             $done = 0;
@@ -88,7 +89,7 @@ class SyncMissingDaysJob extends BaseJob
                     $failed++;
                     $reason = $errors ? implode('; ', $errors) : 'empty stats response';
                     Craft::warning("SyncMissingDaysJob: failed for {$dateStr} — {$reason}", 'umami-is');
-                } elseif ($analytics->syncDailyStats($dateStr, $stats, $row['metrics'] ?? [])) {
+                } elseif ($plugin->sync->syncDailyStats($dateStr, $stats, $row['metrics'] ?? [])) {
                     $synced++;
                     Craft::debug("SyncMissingDaysJob: saved {$dateStr}.", 'umami-is');
                 } else {

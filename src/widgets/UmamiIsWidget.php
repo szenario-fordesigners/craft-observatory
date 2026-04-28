@@ -50,7 +50,7 @@ class UmamiIsWidget extends Widget
     {
         Craft::$app->getView()->registerAssetBundle(CraftUmamiIsWidgetAsset::class);
 
-        \szenario\craftumamiis\UmamiIs::getInstance()->analytics->autoSyncMissingDays();
+        \szenario\craftumamiis\UmamiIs::getInstance()->sync->autoSyncMissingDays();
 
         // Snap to end of today
         $endAt = strtotime('today 23:59:59') * 1000;
@@ -112,7 +112,7 @@ class UmamiIsWidget extends Widget
             $startAt = strtotime(date('Y-m-d 00:00:00', strtotime($timeOffset))) * 1000;
         }
 
-        $pageviews = \szenario\craftumamiis\UmamiIs::getInstance()->analytics->getPageviews($startAt, $endAt, $unit);
+        $pageviews = \szenario\craftumamiis\UmamiIs::getInstance()->client->getPageviews($startAt, $endAt, $unit);
 
         return Craft::$app->getView()->renderTemplate(
             'umami-is/_widget',

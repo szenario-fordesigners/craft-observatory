@@ -3,6 +3,7 @@
 namespace szenario\craftumamiis\console\controllers;
 
 use craft\console\Controller;
+use szenario\craftumamiis\helpers\UmamiTime;
 use szenario\craftumamiis\UmamiIs;
 use yii\console\ExitCode;
 
@@ -34,13 +35,13 @@ class SyncController extends Controller
     {
         $this->stdout("Starting sync for the last {$days} days of Umami stats (concurrency {$concurrency})...\n");
 
-        $analytics = UmamiIs::getInstance()->analytics;
+        $plugin = UmamiIs::getInstance();
         $successCount = 0;
 
         $daySpecs = [];
         for ($i = 1; $i <= $days; $i++) {
-            $dateStr = $analytics->dateOffset($i);
-            [$startAt, $endAt] = $analytics->dayBounds($dateStr);
+            $dateStr = UmamiTime::dateOffset($i);
+            [$startAt, $endAt] = UmamiTime::dayBounds($dateStr);
 
             $daySpecs[] = [
                 'date' => $dateStr,
@@ -51,7 +52,7 @@ class SyncController extends Controller
 
         $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
 
-        $batch = $analytics->getDailyStatsAndMetricsBatch($daySpecs, $metricsTypes, $concurrency);
+        $batch = $plugin->client->getDailyStatsAndMetricsBatch($daySpecs, $metricsTypes, $concurrency);
 
         foreach ($daySpecs as $day) {
             $dateStr = $day['date'];
@@ -72,7 +73,7 @@ class SyncController extends Controller
                 continue;
             }
 
-            $success = $analytics->syncDailyStats($dateStr, $stats, $metrics);
+            $success = $plugin->sync->syncDailyStats($dateStr, $stats, $metrics);
             if ($success) {
                 $this->stdout("Saved.\n");
                 $successCount++;
