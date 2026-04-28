@@ -20,7 +20,7 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify(nodeEnv),
     'process.env': JSON.stringify({ NODE_ENV: nodeEnv }),
     process: JSON.stringify({ env: { NODE_ENV: nodeEnv } }),
-    __VUE_PROD_DEVTOOLS__: true,
+    __VUE_PROD_DEVTOOLS__: nodeEnv !== 'production',
   },
   build: {
     lib: {
@@ -42,7 +42,8 @@ export default defineConfig({
         ? '../src/assetbundles/craftumamiiswidget/dist'
         : '../src/assetbundles/craftumamiiscp/dist',
     emptyOutDir: true,
-    sourcemap: true,
-    minify: false,
+
+    sourcemap: nodeEnv !== 'production',
+    minify: nodeEnv === 'production',
   },
 });
