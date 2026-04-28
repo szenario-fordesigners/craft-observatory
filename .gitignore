@@ -42,3 +42,6 @@ coverage
 
 # Vitest
 __screenshots__/
+
+
+**/.DS_Store
