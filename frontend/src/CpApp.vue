@@ -1,6 +1,9 @@
 <template>
   <div class="umami-cp-app">
-    <p>Daily totals for the last 30 days. Historical data is loaded from your local database; missing days are filled by the background queue.</p>
+    <p>
+      Daily totals for the last 30 days. Historical data is loaded from your local database; missing
+      days are filled by the background queue.
+    </p>
 
     <div class="tablepane">
       <table class="data fullwidth">
@@ -17,7 +20,9 @@
         </thead>
         <tbody>
           <tr v-if="!stats || stats.length === 0">
-            <td colspan="7">No metrics available. Make sure your credentials are configured correctly.</td>
+            <td colspan="7">
+              No metrics available. Make sure your credentials are configured correctly.
+            </td>
           </tr>
           <tr v-for="(row, index) in stats" :key="index">
             <td>
@@ -56,7 +61,7 @@ export interface StatRow {
   source: string;
 }
 
-const props = defineProps<{
+defineProps<{
   stats?: StatRow[];
 }>();
 
