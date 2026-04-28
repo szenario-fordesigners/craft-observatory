@@ -5,7 +5,7 @@ import MetricList from '@/components/MetricList.vue';
 import StatsOverview from '@/components/StatsOverview.vue';
 import { useDateRange, type RangeValue } from '@/composables/useDateRange';
 import type { WebsitePageviews, WebsiteMetric, WebsiteStats } from '@umami/api-client';
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onUnmounted, watch } from 'vue';
 
 const props = defineProps<{
   title: string;
@@ -88,19 +88,7 @@ const fetchDashboardData = async (includePageviews = true) => {
   }
 };
 
-let intervalId: number;
-
-onMounted(() => {
-  intervalId = window.setInterval(() => {
-    fetchDashboardData();
-  }, 60000);
-});
-
 onUnmounted(() => {
-  if (intervalId) {
-    window.clearInterval(intervalId);
-  }
-
   dashboardAbortController?.abort();
 });
 

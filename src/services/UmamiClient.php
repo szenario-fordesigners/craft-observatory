@@ -266,7 +266,7 @@ class UmamiClient extends Component
      * @param string[] $types Metric types to fetch.
      * @return array<string,array<mixed>>
      */
-    public function getMetricsBatch(int $startAt, int $endAt, array $types, int $cacheDuration = 60, int $concurrency = 8): array
+    public function getMetricsBatch(int $startAt, int $endAt, array $types, int $cacheDuration = 300, int $concurrency = 8): array
     {
         $types = array_values(array_unique(array_filter(array_map('trim', $types))));
         $results = array_fill_keys($types, []);
@@ -354,7 +354,7 @@ class UmamiClient extends Component
             '/metrics',
             ['startAt' => $startAt, 'endAt' => $endAt, 'type' => $type],
             "umami_metrics_{$websiteId}_{$startAt}_{$endAt}_{$type}",
-            60,
+            300,
         );
     }
 }
