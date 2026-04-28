@@ -1,24 +1,90 @@
-# Creates a new GitHub Release whenever the Craft Plugin Store
-# is notified of a new version tag.
-
 name: Create Release
 run-name: Create release for ${{ github.event.client_payload.version }}
 
 on:
-  repository_dispatch:
-    types:
-      - craftcms/new-release
+    # The real trigger
+    repository_dispatch:
+        types:
+            - craftcms/new-release
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: ncipollo/release-action@v1
-        with:
-          body: ${{ github.event.client_payload.notes }}
-          makeLatest: ${{ github.event.client_payload.latest }}
-          name: ${{ github.event.client_payload.version }}
-          prerelease: ${{ github.event.client_payload.prerelease }}
-          tag: ${{ github.event.client_payload.tag }}
+    build:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write # Required to create tags/releases
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  ref: ${{ github.event.client_payload.tag }}
+                  fetch-depth: 0
+
+            # 1. Setup PHP and run unit tests first — fail fast before doing any
+            #    frontend work, tag rewrites, or release creation.
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.2'
+                  coverage: none
+                  tools: composer:v2
+                  extensions: intl, gd, zip, bcmath, dom, mbstring, curl
+
+            - name: Get Composer cache directory
+              id: composer-cache
+              run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache@v4
+              with:
+                  path: ${{ steps.composer-cache.outputs.dir }}
+                  key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+                  restore-keys: ${{ runner.os }}-composer-
+
+            - name: Install Composer dependencies
+              run: composer install --prefer-dist --no-progress --no-interaction
+
+            - name: Run PHPUnit
+              run: composer test
+
+            # 2. Setup Node + pnpm
+            - uses: pnpm/action-setup@v6
+              with:
+                  version: 10.33.0
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24.14.1
+                  cache: pnpm
+                  cache-dependency-path: frontend/pnpm-lock.yaml
+
+            # 3. Build the frontend.
+            #    A single `pnpm build` runs both BUILD_TARGET=widget and BUILD_TARGET=cp
+            #    in parallel via run-p, producing two dist bundles.
+            - name: Build frontend assets
+              run: |
+                  cd frontend
+                  pnpm install
+                  pnpm build
+
+            # 4. Commit both asset-bundle dist dirs and re-push the tag.
+            - name: Commit Build Artifacts to Tag
+              run: |
+                  git config --global user.name "GitHub Actions"
+                  git config --global user.email "actions@github.com"
+
+                  TAG_NAME="${{ github.event.client_payload.tag }}"
+
+                  # Force-add both built bundles (paths come from frontend/vite.config.ts).
+                  git add -f src/assetbundles/craftumamiiswidget/dist
+                  git add -f src/assetbundles/craftumamiiscp/dist
+
+                  git commit -m "Build assets for $TAG_NAME"
+
+                  # Update/Create the tag
+                  git tag -f "$TAG_NAME"
+                  git push origin "$TAG_NAME" --force
+
+            # 5. Create the Release
+            - uses: ncipollo/release-action@v1
+              with:
+                  body: ${{ github.event.client_payload.notes }}
+                  makeLatest: ${{ github.event.client_payload.latest }}
+                  name: ${{ github.event.client_payload.version }}
+                  prerelease: ${{ github.event.client_payload.prerelease }}
+                  tag: ${{ github.event.client_payload.tag }}
