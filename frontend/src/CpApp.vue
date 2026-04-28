@@ -1,6 +1,6 @@
 <template>
   <div class="umami-cp-app">
-    <p>Daily totals for the last 30 days. The "Source" column shows whether data was loaded blazingly fast from your local database or fetched live from the Umami API.</p>
+    <p>Daily totals for the last 30 days. Historical data is loaded from your local database; missing days are filled by the background queue.</p>
 
     <div class="tablepane">
       <table class="data fullwidth">

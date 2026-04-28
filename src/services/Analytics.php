@@ -218,11 +218,11 @@ class Analytics extends Component
 
     /**
      * Queues a background job to sync any historical days missing from the local DB.
-     * Render-path cost: one indexed query for MAX(dateUpdated) plus at most one queue insert.
+     * Render-path cost: cache checks, one indexed query for MAX(dateUpdated), and at most one queue insert.
      * Today is always skipped — it's still accumulating and handled by the live widget queries.
      *
      * @param int $days How many days back to check (excluding today).
-     * @param int $throttleSeconds Minimum seconds between sync attempts. Derived from MAX(dateUpdated) on DailyStats.
+     * @param int $throttleSeconds Minimum seconds between sync attempts.
      * @return bool True if a job was queued, false if throttled or already pending.
      */
     public function autoSyncMissingDays(int $days = 30, int $throttleSeconds = 900): bool
@@ -232,6 +232,13 @@ class Analytics extends Component
 
         if (empty($websiteId)) {
             Craft::warning('autoSyncMissingDays skipped: no websiteId configured.', 'umami-is');
+            return false;
+        }
+
+        $cache = Craft::$app->getCache();
+        $lastAttemptKey = "umami_autosync_last_attempt_{$websiteId}";
+        if ($cache->get($lastAttemptKey) !== false) {
+            Craft::debug("autoSyncMissingDays throttled: a sync was attempted within the last {$throttleSeconds}s.", 'umami-is');
             return false;
         }
 
@@ -246,12 +253,13 @@ class Analytics extends Component
         }
 
         // Dedupe pending jobs across rapid concurrent renders. The job itself clears this key on completion.
-        $cache = Craft::$app->getCache();
         $pendingKey = "umami_autosync_pending_{$websiteId}";
         if (!$cache->add($pendingKey, 1, $throttleSeconds)) {
             Craft::debug('autoSyncMissingDays skipped: a sync job is already pending.', 'umami-is');
             return false;
         }
+
+        $cache->set($lastAttemptKey, 1, $throttleSeconds);
 
         Craft::$app->getQueue()->push(new SyncMissingDaysJob([
             'websiteId' => $websiteId,
@@ -312,7 +320,8 @@ class Analytics extends Component
 
     /**
      * Get a daily stats report for the last X days.
-     * Returns an array of stats per day, including whether it came from the DB or the API.
+     * Historical days are read from the DB only; missing rows are filled by the queue.
+     * Today is fetched live because it is still accumulating.
      *
      * @param int $days Number of days to include (including today)
      * @return array
@@ -354,12 +363,12 @@ class Analytics extends Component
                     'metrics' => $record->metrics ? json_decode($record->metrics, true) : [],
                     'source' => 'DB',
                 ];
-            } else {
-                // Fetch from API
+            } elseif ($isToday) {
+                // Today is still accumulating, so keep it live and out of the historical cache.
                 $startAt = strtotime($dateStr . ' midnight') * 1000;
-                $endAt = $isToday ? (time() * 1000) : (strtotime($dateStr . ' 23:59:59') * 1000);
+                $endAt = time() * 1000;
 
-                $stats = $this->getStats($startAt, $endAt);
+                $stats = $this->getStats($startAt, $endAt, 60);
 
                 $pageviews = (int) ($stats['pageviews'] ?? 0);
                 $visitors = (int) ($stats['visitors'] ?? 0);
@@ -377,11 +386,17 @@ class Analytics extends Component
                     'metrics' => [],
                     'source' => 'API',
                 ];
-
-                // If it's a past day missing from the DB, sync it now
-                if (!$isToday && $stats) {
-                    $this->syncDailyStats($dateStr, $stats);
-                }
+            } else {
+                $report[] = [
+                    'date' => $dateStr,
+                    'pageviews' => 0,
+                    'visitors' => 0,
+                    'visits' => 0,
+                    'bounces' => 0,
+                    'totaltime' => 0,
+                    'metrics' => [],
+                    'source' => 'Queued',
+                ];
             }
         }
 
@@ -392,9 +407,10 @@ class Analytics extends Component
      *
      * @param int $startAt Timestamp (in ms)
      * @param int $endAt Timestamp (in ms)
+     * @param int $cacheDuration Cache duration in seconds
      * @return array|null The stats data, or null on error.
      */
-    public function getStats(int $startAt, int $endAt): ?array
+    public function getStats(int $startAt, int $endAt, int $cacheDuration = 300): ?array
     {
         $settings = UmamiIs::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
@@ -441,7 +457,7 @@ class Analytics extends Component
             $body = json_decode($response->getBody()->getContents(), true);
 
             if (is_array($body)) {
-                $cache->set($cacheKey, $body, 300); // Cache for 5 minutes
+                $cache->set($cacheKey, $body, $cacheDuration);
                 return $body;
             }
         } catch (\Throwable $e) {
