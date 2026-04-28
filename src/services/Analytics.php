@@ -18,11 +18,11 @@ use szenario\craftumamiis\UmamiIs;
 class Analytics extends Component
 {
     /**
-     * Returns a shared Guzzle client, base URL and headers for Umami API calls.
+     * Returns a shared Guzzle client, base URL, headers and websiteId for Umami API calls.
      *
-     * @return array{0:\GuzzleHttp\Client,1:string,2:array<string,string>}|null
+     * @return array{0:\GuzzleHttp\Client,1:string,2:array<string,string>,3:string}|null
      */
-    private function getUmamiHttpContext(): ?array
+    private function getUmamiHttpContext(float $timeout = 5.0): ?array
     {
         $settings = UmamiIs::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
@@ -43,11 +43,95 @@ class Analytics extends Component
         ];
 
         $client = Craft::createGuzzleClient([
-            'timeout' => 10.0,
+            'timeout' => $timeout,
             'connect_timeout' => 3.0,
         ]);
 
-        return [$client, $baseUrl, $headers];
+        return [$client, $baseUrl, $headers, $websiteId];
+    }
+
+    /**
+     * Performs a cached GET against the Umami website API.
+     *
+     * @param string $path Path appended to the website base URL, e.g. '/stats'.
+     * @param array<string,scalar> $query Query string parameters.
+     * @param string|null $cacheKey If provided, response is cached/served under this key.
+     * @param int $cacheDuration TTL in seconds; ignored when $cacheKey is null or 0.
+     * @param float $timeout Per-request HTTP timeout in seconds.
+     * @return array<mixed>|null Decoded body, or null on failure / non-array response.
+     */
+    private function umamiGet(string $path, array $query = [], ?string $cacheKey = null, int $cacheDuration = 0, float $timeout = 5.0): ?array
+    {
+        $cache = Craft::$app->getCache();
+        if ($cacheKey !== null) {
+            $cached = $cache->get($cacheKey);
+            if ($cached !== false) {
+                return $cached;
+            }
+        }
+
+        $ctx = $this->getUmamiHttpContext($timeout);
+        if ($ctx === null) {
+            return null;
+        }
+        [$client, $baseUrl, $headers] = $ctx;
+
+        try {
+            $response = $client->request('GET', "{$baseUrl}{$path}", [
+                'headers' => $headers,
+                'query' => $query,
+            ]);
+
+            $body = json_decode($response->getBody()->getContents(), true);
+            if (!is_array($body)) {
+                Craft::error("Unexpected Umami response at {$path}: " . print_r($body, true), __METHOD__);
+                return null;
+            }
+
+            if ($cacheKey !== null && $cacheDuration > 0) {
+                $cache->set($cacheKey, $body, $cacheDuration);
+            }
+            return $body;
+        } catch (GuzzleException $e) {
+            Craft::error("Umami GET {$path} failed: {$e->getMessage()}", __METHOD__);
+        } catch (\Throwable $e) {
+            Craft::error("Umami GET {$path} unexpected error: {$e->getMessage()}", __METHOD__);
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns the configured Craft application timezone, used to compute day boundaries.
+     */
+    private function appTimeZone(): \DateTimeZone
+    {
+        return new \DateTimeZone(Craft::$app->getTimeZone());
+    }
+
+    /**
+     * Returns Y-m-d for a given offset in days from today, in the app timezone.
+     * DST-safe: uses DateTimeImmutable arithmetic instead of strtotime.
+     */
+    public function dateOffset(int $daysAgo): string
+    {
+        return (new \DateTimeImmutable('today', $this->appTimeZone()))
+            ->modify("-{$daysAgo} days")
+            ->format('Y-m-d');
+    }
+
+    /**
+     * Returns [startMs, endMs] for a Y-m-d date in the app timezone.
+     * Start is local midnight; end is one second before the next local midnight, so DST
+     * spring-forward / fall-back days are bounded correctly.
+     *
+     * @return array{0:int,1:int}
+     */
+    public function dayBounds(string $dateStr): array
+    {
+        $start = new \DateTimeImmutable($dateStr . ' 00:00:00', $this->appTimeZone());
+        $end = $start->modify('+1 day')->modify('-1 second');
+        return [$start->getTimestamp() * 1000, $end->getTimestamp() * 1000];
     }
 
     /**
@@ -158,62 +242,12 @@ class Analytics extends Component
     {
         $settings = UmamiIs::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
-
         if (empty($websiteId)) {
-            Craft::error('Umami Website ID is required.', __METHOD__);
             return null;
         }
 
-        $cacheKey = "umami_active_visitors_{$websiteId}";
-        $cache = Craft::$app->getCache();
-
-        $cachedVisitors = $cache->get($cacheKey);
-        if ($cachedVisitors !== false) {
-            return (int) $cachedVisitors;
-        }
-
-        $url = rtrim(App::parseEnv($settings->umamiUrl), '/');
-        $apiKey = App::parseEnv($settings->umamiApiKey);
-
-        if (empty($url) || empty($apiKey)) {
-            Craft::error('Umami settings are incomplete. URL and API Key are required.', __METHOD__);
-            return null;
-        }
-
-        $client = Craft::createGuzzleClient(['timeout' => 5.0, 'connect_timeout' => 3.0]);
-
-        try {
-            // Clean up the URL to prevent double slashes or accidental paths
-            $cleanUrl = preg_replace('#/(api|v1)/?$#', '', $url);
-
-            // Use Umami Cloud API format (apikey + websiteid)
-            $endpointUrl = "{$cleanUrl}/v1/websites/{$websiteId}/active";
-
-            $headers = [
-                'Accept' => 'application/json',
-                'x-umami-api-key' => $apiKey,
-            ];
-
-            $response = $client->request('GET', $endpointUrl, [
-                'headers' => $headers,
-            ]);
-
-            $body = json_decode($response->getBody()->getContents(), true);
-
-            if (isset($body['visitors'])) {
-                $visitors = (int) $body['visitors'];
-                $cache->set($cacheKey, $visitors, 60); // Cache for 60 seconds
-                return $visitors;
-            }
-
-            Craft::error("Unexpected response from Umami API: " . print_r($body, true), __METHOD__);
-        } catch (GuzzleException $e) {
-            Craft::error("Error fetching active visitors from Umami: {$e->getMessage()}", __METHOD__);
-        } catch (\Throwable $e) {
-            Craft::error("Unexpected error fetching active visitors from Umami: {$e->getMessage()}", __METHOD__);
-        }
-
-        return null;
+        $body = $this->umamiGet('/active', [], "umami_active_visitors_{$websiteId}", 60);
+        return isset($body['visitors']) ? (int) $body['visitors'] : null;
     }
 
     /**
@@ -414,57 +448,16 @@ class Analytics extends Component
     {
         $settings = UmamiIs::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
-
         if (empty($websiteId)) {
-            Craft::error('Umami Website ID is required.', __METHOD__);
             return null;
         }
 
-        $cacheKey = "umami_stats_{$websiteId}_{$startAt}_{$endAt}";
-        $cache = Craft::$app->getCache();
-
-        $cachedStats = $cache->get($cacheKey);
-        if ($cachedStats !== false) {
-            return $cachedStats;
-        }
-
-        $url = rtrim(App::parseEnv($settings->umamiUrl), '/');
-        $apiKey = App::parseEnv($settings->umamiApiKey);
-
-        if (empty($url) || empty($apiKey)) {
-            Craft::error('Umami settings are incomplete. URL and API Key are required.', __METHOD__);
-            return null;
-        }
-
-        $client = Craft::createGuzzleClient(['timeout' => 5.0, 'connect_timeout' => 3.0]);
-        try {
-            $cleanUrl = preg_replace('#/(api|v1)/?$#', '', $url);
-            $endpointUrl = "{$cleanUrl}/v1/websites/{$websiteId}/stats";
-
-            $headers = [
-                'Accept' => 'application/json',
-                'x-umami-api-key' => $apiKey,
-            ];
-
-            $response = $client->request('GET', $endpointUrl, [
-                'headers' => $headers,
-                'query' => [
-                    'startAt' => $startAt,
-                    'endAt' => $endAt,
-                ],
-            ]);
-
-            $body = json_decode($response->getBody()->getContents(), true);
-
-            if (is_array($body)) {
-                $cache->set($cacheKey, $body, $cacheDuration);
-                return $body;
-            }
-        } catch (\Throwable $e) {
-            Craft::error("Unexpected error fetching stats from Umami: {$e->getMessage()}", __METHOD__);
-        }
-
-        return null;
+        return $this->umamiGet(
+            '/stats',
+            ['startAt' => $startAt, 'endAt' => $endAt],
+            "umami_stats_{$websiteId}_{$startAt}_{$endAt}",
+            $cacheDuration,
+        );
     }
 
     /**     * Get pageviews for a given timeframe.
@@ -478,63 +471,17 @@ class Analytics extends Component
     {
         $settings = UmamiIs::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
-
         if (empty($websiteId)) {
-            Craft::error('Umami Website ID is required.', __METHOD__);
             return null;
         }
 
-        $cacheKey = "umami_pageviews_{$websiteId}_{$startAt}_{$endAt}_{$unit}";
-        $cache = Craft::$app->getCache();
-
-        $cachedPageviews = $cache->get($cacheKey);
-        if ($cachedPageviews !== false) {
-            return $cachedPageviews;
-        }
-
-        $url = rtrim(App::parseEnv($settings->umamiUrl), '/');
-        $apiKey = App::parseEnv($settings->umamiApiKey);
-
-        if (empty($url) || empty($apiKey)) {
-            Craft::error('Umami settings are incomplete. URL and API Key are required.', __METHOD__);
-            return null;
-        }
-
-        $client = Craft::createGuzzleClient(['timeout' => 5.0, 'connect_timeout' => 3.0]);
-
-        try {
-            $cleanUrl = preg_replace('#/(api|v1)/?$#', '', $url);
-            $endpointUrl = "{$cleanUrl}/v1/websites/{$websiteId}/pageviews";
-
-            $headers = [
-                'Accept' => 'application/json',
-                'x-umami-api-key' => $apiKey,
-            ];
-
-            $response = $client->request('GET', $endpointUrl, [
-                'headers' => $headers,
-                'query' => [
-                    'startAt' => $startAt,
-                    'endAt' => $endAt,
-                    'unit' => $unit,
-                ],
-            ]);
-
-            $body = json_decode($response->getBody()->getContents(), true);
-
-            if (isset($body['pageviews'])) {
-                $cache->set($cacheKey, $body, 300); // Cache for 5 minutes
-                return $body;
-            }
-
-            Craft::error("Unexpected response from Umami API: " . print_r($body, true), __METHOD__);
-        } catch (GuzzleException $e) {
-            Craft::error("Error fetching pageviews from Umami: {$e->getMessage()}", __METHOD__);
-        } catch (\Throwable $e) {
-            Craft::error("Unexpected error fetching pageviews from Umami: {$e->getMessage()}", __METHOD__);
-        }
-
-        return null;
+        $body = $this->umamiGet(
+            '/pageviews',
+            ['startAt' => $startAt, 'endAt' => $endAt, 'unit' => $unit],
+            "umami_pageviews_{$websiteId}_{$startAt}_{$endAt}_{$unit}",
+            300,
+        );
+        return isset($body['pageviews']) ? $body : null;
     }
 
     /**
