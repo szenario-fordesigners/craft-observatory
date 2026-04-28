@@ -15,7 +15,7 @@
 	"require-dev": {
 		"craftcms/ecs": "dev-main",
 		"craftcms/phpstan": "dev-main",
-		"phpunit/phpunit": "13.1.7"
+		"phpunit/phpunit": "11.5.55"
 	},
 	"autoload": {
 		"psr-4": {
