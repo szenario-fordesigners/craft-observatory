@@ -3,10 +3,14 @@
 {% set title = "Umami Analytics" %}
 {% set plugin = craft.app.plugins.getPlugin('umami-is') %}
 {% do plugin.sync.autoSyncMissingDays() %}
-{% set stats = plugin.stats.getDailyStatsReport(30) %}
+
+{% set props = {
+    title: title,
+    defaultPeriod: '24h',
+} %}
 
 {% block content %}
 	{% do view.registerAssetBundle("szenario\\craftumamiis\\assetbundles\\craftumamiiscp\\CraftUmamiIsCpAsset") %}
 
-	<div id="umami-is-cp-app" data-props="{{ { stats: stats }|json_encode }}"></div>
+	<div id="umami-is-cp-app" data-props="{{ props|json_encode|escape('html_attr') }}"></div>
 {% endblock %}
