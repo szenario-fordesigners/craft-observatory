@@ -125,7 +125,7 @@ onUnmounted(() => abortController?.abort());
       <div class="umami-widget__col umami-widget__col--total">
         <div class="umami-widget__header">last 7 days</div>
         <div class="umami-widget__total-count">
-          <Transition name="umami-fade" mode="out-in">
+          <Transition name="umami-fade">
             <span v-if="data" key="total-real">{{ formatNumber(data.totalVisitors) }}</span>
             <span
               v-else
@@ -141,21 +141,21 @@ onUnmounted(() => abortController?.abort());
         <div class="umami-widget__top-grid">
           <div>country</div>
           <div class="umami-widget__top-value">
-            <Transition name="umami-fade" mode="out-in">
+            <Transition name="umami-fade">
               <span v-if="data" key="country-real">{{ data.top.country?.x ?? '—' }}</span>
               <span v-else key="country-skel" class="umami-widget__skeleton-text"></span>
             </Transition>
           </div>
           <div>referrers</div>
           <div class="umami-widget__top-value">
-            <Transition name="umami-fade" mode="out-in">
+            <Transition name="umami-fade">
               <span v-if="data" key="ref-real">{{ data.top.referrer?.x ?? '—' }}</span>
               <span v-else key="ref-skel" class="umami-widget__skeleton-text"></span>
             </Transition>
           </div>
           <div>browser</div>
           <div class="umami-widget__top-value">
-            <Transition name="umami-fade" mode="out-in">
+            <Transition name="umami-fade">
               <span v-if="data" key="br-real">{{ data.top.browser?.x ?? '—' }}</span>
               <span v-else key="br-skel" class="umami-widget__skeleton-text"></span>
             </Transition>
@@ -181,7 +181,7 @@ onUnmounted(() => abortController?.abort());
 
     <div class="umami-widget__labels">
       <div v-for="i in 7" :key="i - 1" class="umami-widget__label-cell">
-        <Transition name="umami-fade" mode="out-in">
+        <Transition name="umami-fade">
           <div v-if="data" :key="`real-${i - 1}`" class="umami-widget__label-content">
             <div class="umami-widget__weekday">
               {{ data.daily[i - 1] ? formatWeekday(data.daily[i - 1].date) : '' }}
@@ -257,6 +257,13 @@ onUnmounted(() => abortController?.abort());
 .umami-widget__total-count {
   font-size: 3.75rem;
   line-height: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.umami-widget__total-count > * {
+  grid-area: 1 / 1;
+  min-width: 0;
 }
 
 .umami-widget__top-grid {
@@ -268,6 +275,13 @@ onUnmounted(() => abortController?.abort());
 }
 
 .umami-widget__top-value {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.umami-widget__top-value > * {
+  grid-area: 1 / 1;
   min-width: 0;
 }
 
@@ -365,7 +379,8 @@ onUnmounted(() => abortController?.abort());
 
 .umami-fade-enter-active,
 .umami-fade-leave-active {
-  transition: opacity 0.35s ease;
+  transition: opacity 0.4s ease;
+  animation: none;
 }
 
 .umami-fade-enter-from,
@@ -397,6 +412,13 @@ onUnmounted(() => abortController?.abort());
   text-align: center;
   font-size: 0.95rem;
   line-height: 1.2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.umami-widget__label-cell > * {
+  grid-area: 1 / 1;
+  min-width: 0;
 }
 
 .umami-widget__label-content {
