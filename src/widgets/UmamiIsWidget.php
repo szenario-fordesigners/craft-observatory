@@ -13,7 +13,7 @@ class UmamiIsWidget extends Widget
 {
     public static function displayName(): string
     {
-        return Craft::t('umami-is', 'Umami Is Widget');
+        return "";
     }
 
     public static function isSelectable(): bool
