@@ -18,6 +18,116 @@ use szenario\craftumamiis\UmamiIs;
 class StatsReport extends Component
 {
     /**
+     * Compact summary used by the dashboard widget: 7-day visitor totals with prior-period
+     * comparison, daily visitor series, and top country/referrer/browser.
+     *
+     * Lean on UmamiClient's response cache (5-min TTL) — endAt is bucketed to a 5-min
+     * boundary so cache keys stabilize within the window.
+     *
+     * @return array{
+     *     totalVisitors:int,
+     *     priorVisitors:int,
+     *     deltaPercent:int,
+     *     deltaDirection:int,
+     *     daily:array<int,array{date:string,visitors:int}>,
+     *     top:array{
+     *         country:?array{x:string,y:int},
+     *         referrer:?array{x:string,y:int},
+     *         browser:?array{x:string,y:int}
+     *     }
+     * }
+     */
+    public function getWidgetSummary(): array
+    {
+        $empty = [
+            'totalVisitors' => 0,
+            'priorVisitors' => 0,
+            'deltaPercent' => 0,
+            'deltaDirection' => 0,
+            'daily' => [],
+            'top' => ['country' => null, 'referrer' => null, 'browser' => null],
+        ];
+
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+
+        if (empty($websiteId)) {
+            return $empty;
+        }
+
+        $bucketSec = 300;
+        $nowBucketed = (int) (floor(time() / $bucketSec) * $bucketSec * 1000);
+
+        // Last 7 days: midnight 6 days ago → now (bucketed).
+        [$weekStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(6));
+
+        // Prior 7 days: 14 days ago → 7 days ago (inclusive). Fixed window — cached effectively forever.
+        [$priorStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(13));
+        [, $priorEnd] = UmamiTime::dayBounds(UmamiTime::dateOffset(7));
+
+        $client = UmamiIs::getInstance()->client;
+
+        $weekStats = $client->getStats($weekStart, $nowBucketed, $bucketSec) ?? [];
+        $priorStats = $client->getStats($priorStart, $priorEnd, $bucketSec) ?? [];
+        $metrics = $client->getMetricsBatch(
+            $weekStart,
+            $nowBucketed,
+            ['country', 'referrer', 'browser'],
+            $bucketSec,
+        );
+
+        $totalVisitors = (int) ($weekStats['visitors'] ?? 0);
+        $priorVisitors = (int) ($priorStats['visitors'] ?? 0);
+        [$deltaPercent, $deltaDirection] = $this->computeDelta($totalVisitors, $priorVisitors);
+
+        $daily = array_reverse(array_map(
+            static fn (array $row) => ['date' => $row['date'], 'visitors' => (int) $row['visitors']],
+            $this->getDailyStatsReport(7),
+        ));
+
+        return [
+            'totalVisitors' => $totalVisitors,
+            'priorVisitors' => $priorVisitors,
+            'deltaPercent' => $deltaPercent,
+            'deltaDirection' => $deltaDirection,
+            'daily' => $daily,
+            'top' => [
+                'country' => $this->topMetric($metrics['country'] ?? []),
+                'referrer' => $this->topMetric($metrics['referrer'] ?? []),
+                'browser' => $this->topMetric($metrics['browser'] ?? []),
+            ],
+        ];
+    }
+
+    /**
+     * @param array<mixed> $metric
+     * @return array{x:string,y:int}|null
+     */
+    private function topMetric(array $metric): ?array
+    {
+        $top = $metric[0] ?? null;
+        if (!\is_array($top) || !isset($top['x'])) {
+            return null;
+        }
+
+        return ['x' => (string) $top['x'], 'y' => (int) ($top['y'] ?? 0)];
+    }
+
+    /**
+     * @return array{0:int,1:int} [percent, direction (-1|0|1)]
+     */
+    private function computeDelta(int $current, int $prior): array
+    {
+        if ($prior === 0) {
+            return [$current > 0 ? 100 : 0, $current > 0 ? 1 : 0];
+        }
+
+        $pct = (int) round((($current - $prior) / $prior) * 100);
+        $dir = $current === $prior ? 0 : ($current > $prior ? 1 : -1);
+        return [$pct, $dir];
+    }
+
+    /**
      * @param int $days Number of days to include (including today).
      * @return array<int,array{date:string,pageviews:int,visitors:int,visits:int,bounces:int,totaltime:int,metrics:array,source:string}>
      */

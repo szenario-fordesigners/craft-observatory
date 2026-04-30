@@ -12,6 +12,17 @@ class DashboardController extends Controller
     private const ALLOWED_PAGEVIEW_UNITS = ['hour', 'day', 'month', 'year'];
 
     /**
+     * Compact 7-day summary for the dashboard widget.
+     */
+    public function actionGetWidgetSummary(): Response
+    {
+        $plugin = UmamiIs::getInstance();
+        $plugin->sync->autoSyncMissingDays();
+
+        return $this->asJson($plugin->stats->getWidgetSummary());
+    }
+
+    /**
      * Get all dashboard widget data in one request.
      *
      * @return Response|null
