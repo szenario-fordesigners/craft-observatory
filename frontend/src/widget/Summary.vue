@@ -37,19 +37,7 @@ const skeletonHeights = [55, 35, 48, 70, 100, 28, 60];
 const { data } = useWidgetData<WidgetSummary>('umami-is/dashboard/get-widget-summary');
 
 const localeId = props.locale || 'en';
-const weekdayFormatter = new Intl.DateTimeFormat(localeId, { weekday: 'short', timeZone: 'UTC' });
-const dayFormatter = new Intl.DateTimeFormat(localeId, { day: 'numeric', timeZone: 'UTC' });
 const numberFormatter = new Intl.NumberFormat(localeId);
-
-const toUtcDate = (dateStr: string): Date => {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
-};
-
-const formatWeekday = (dateStr: string): string =>
-  weekdayFormatter.format(toUtcDate(dateStr)).replace(/\.$/, '');
-
-const formatDay = (dateStr: string): string => dayFormatter.format(toUtcDate(dateStr));
 
 const formatNumber = (n: number) => numberFormatter.format(n);
 
@@ -161,15 +149,11 @@ const barHeightFor = (i: number): string => {
       <div v-for="i in 7" :key="i - 1" class="umami-summary__label-cell">
         <CrossFade>
           <div v-if="data" :key="`real-${i - 1}`" class="umami-summary__label-content">
-            <div class="umami-summary__weekday">
-              {{ data.daily[i - 1] ? formatWeekday(data.daily[i - 1].date) : '' }}
-            </div>
-            <div class="umami-summary__day">
-              {{ data.daily[i - 1] ? formatDay(data.daily[i - 1].date) : '' }}
+            <div class="umami-summary__count">
+              {{ data.daily[i - 1] ? formatNumber(data.daily[i - 1].visitors) : '' }}
             </div>
           </div>
           <div v-else :key="`skel-${i - 1}`" class="umami-summary__label-content">
-            <SkeletonText variant="narrow" />
             <SkeletonText variant="narrow" />
           </div>
         </CrossFade>
@@ -303,7 +287,10 @@ const barHeightFor = (i: number): string => {
 .umami-summary__label-content {
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+}
+
+.umami-summary__count {
+  text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
