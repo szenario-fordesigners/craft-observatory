@@ -337,3 +337,9 @@ const barHeightFor = (i: number): string => {
   }
 }
 </style>
+
+<style>
+div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsSummaryWidget'] .widget-heading {
+  display: none;
+}
+</style>

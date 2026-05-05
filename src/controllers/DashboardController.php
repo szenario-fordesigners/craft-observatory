@@ -155,7 +155,7 @@ class DashboardController extends Controller
     private function normalizeMetricTypes(array $types): array
     {
         $types = array_map('trim', $types);
-        $types = array_filter($types, fn (string $type) => \in_array($type, self::DEFAULT_METRIC_TYPES, true));
+        $types = array_filter($types, fn(string $type) => \in_array($type, self::DEFAULT_METRIC_TYPES, true));
 
         return array_values(array_unique($types));
     }

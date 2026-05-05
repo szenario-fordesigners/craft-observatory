@@ -10,7 +10,7 @@ class UmamiIsSummaryWidget extends Widget
 {
     public static function displayName(): string
     {
-        return '';
+        return 'Umami.is Summary';
     }
 
     public static function isSelectable(): bool
