@@ -16,6 +16,7 @@ class DashboardController extends Controller
      */
     public function actionGetWidgetSummary(): Response
     {
+        \Craft::$app->getSession()->close();
         $plugin = UmamiIs::getInstance();
         $plugin->sync->autoSyncMissingDays();
 
@@ -39,6 +40,7 @@ class DashboardController extends Controller
 
         $includePageviews = (string) $request->getParam('includePageviews', '1') !== '0';
 
+        \Craft::$app->getSession()->close();
         $plugin = UmamiIs::getInstance();
         $metrics = $plugin->client->getMetricsBatch($startAt, $endAt, self::DEFAULT_METRIC_TYPES);
 
@@ -64,6 +66,7 @@ class DashboardController extends Controller
             return $this->asFailure('Invalid pageview unit', ['error' => 'Invalid pageview unit']);
         }
 
+        \Craft::$app->getSession()->close();
         $pageviews = UmamiIs::getInstance()->client->getPageviews(
             (int) $startAt,
             (int) $endAt,
@@ -83,6 +86,7 @@ class DashboardController extends Controller
         $startAt = $request->getParam('startAt', strtotime('-7 days') * 1000);
         $endAt = $request->getParam('endAt', time() * 1000);
 
+        \Craft::$app->getSession()->close();
         $stats = UmamiIs::getInstance()->client->getStats(
             (int) $startAt,
             (int) $endAt
@@ -107,6 +111,8 @@ class DashboardController extends Controller
         if (!$typeParam && !$typesParams) {
             return $this->asFailure('Missing metric type(s)', ['error' => 'Missing metric type(s)']);
         }
+
+        \Craft::$app->getSession()->close();
 
         if ($typesParams) {
             $types = $this->normalizeMetricTypes(explode(',', (string) $typesParams));
