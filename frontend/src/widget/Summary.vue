@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { computed } from 'vue';
+import WidgetFrame from '@/shared/WidgetFrame.vue';
+import SkeletonText from '@/shared/SkeletonText.vue';
+import CrossFade from '@/shared/CrossFade.vue';
+import { useWidgetData } from '@/shared/useWidgetData';
 
 interface TopMetric {
   x: string;
@@ -28,8 +32,9 @@ const props = defineProps<{
   locale?: string;
 }>();
 
-const data = ref<WidgetSummary | null>(null);
 const skeletonHeights = [55, 35, 48, 70, 100, 28, 60];
+
+const { data } = useWidgetData<WidgetSummary>('umami-is/dashboard/get-widget-summary');
 
 const localeId = props.locale || 'en';
 const weekdayFormatter = new Intl.DateTimeFormat(localeId, { weekday: 'short', timeZone: 'UTC' });
@@ -59,39 +64,16 @@ const barHeightFor = (i: number): string => {
   if (!day || maxVisitors.value === 0) return '0%';
   return `${(day.visitors / maxVisitors.value) * 100}%`;
 };
-
-let abortController: AbortController | null = null;
-
-const fetchSummary = async () => {
-  abortController?.abort();
-  abortController = new AbortController();
-  try {
-    const url = window.Craft.getActionUrl('umami-is/dashboard/get-widget-summary');
-    const res = await fetch(url, {
-      headers: { Accept: 'application/json' },
-      signal: abortController.signal,
-    });
-    if (res.ok) {
-      data.value = (await res.json()) as WidgetSummary;
-    }
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') return;
-    console.error('Error fetching widget summary', e);
-  }
-};
-
-onMounted(fetchSummary);
-onUnmounted(() => abortController?.abort());
 </script>
 
 <template>
-  <div class="umami-widget">
-    <div class="umami-widget__head">
-      <div class="umami-widget__col umami-widget__col--visitors">
-        <div class="umami-widget__header">visitors</div>
+  <WidgetFrame>
+    <div class="umami-summary__head">
+      <div class="umami-summary__col umami-summary__col--visitors">
+        <div class="umami-summary__header">visitors</div>
         <svg
           v-if="!data || data.deltaDirection > 0"
-          class="umami-widget__arrow"
+          class="umami-summary__arrow"
           viewBox="17 45 56 47"
           fill="currentColor"
           xmlns="http://www.w3.org/2000/svg"
@@ -102,7 +84,7 @@ onUnmounted(() => abortController?.abort());
         </svg>
         <svg
           v-else-if="data.deltaDirection < 0"
-          class="umami-widget__arrow umami-widget__arrow--down"
+          class="umami-summary__arrow umami-summary__arrow--down"
           viewBox="17 45 56 47"
           fill="currentColor"
           xmlns="http://www.w3.org/2000/svg"
@@ -113,7 +95,7 @@ onUnmounted(() => abortController?.abort());
         </svg>
         <svg
           v-else
-          class="umami-widget__arrow"
+          class="umami-summary__arrow"
           viewBox="17 45 56 47"
           fill="currentColor"
           xmlns="http://www.w3.org/2000/svg"
@@ -122,43 +104,39 @@ onUnmounted(() => abortController?.abort());
         </svg>
       </div>
 
-      <div class="umami-widget__col umami-widget__col--total">
-        <div class="umami-widget__header">last 7 days</div>
-        <div class="umami-widget__total-count">
-          <Transition name="umami-fade">
+      <div class="umami-summary__col umami-summary__col--total">
+        <div class="umami-summary__header">last 7 days</div>
+        <div class="umami-summary__total-count">
+          <CrossFade>
             <span v-if="data" key="total-real">{{ formatNumber(data.totalVisitors) }}</span>
-            <span
-              v-else
-              key="total-skel"
-              class="umami-widget__skeleton-text umami-widget__skeleton-text--total"
-            ></span>
-          </Transition>
+            <SkeletonText v-else key="total-skel" variant="total" />
+          </CrossFade>
         </div>
       </div>
 
-      <div class="umami-widget__col umami-widget__col--top">
-        <div class="umami-widget__header">top</div>
-        <div class="umami-widget__top-grid">
+      <div class="umami-summary__col umami-summary__col--top">
+        <div class="umami-summary__header">top</div>
+        <div class="umami-summary__top-grid">
           <div>country</div>
-          <div class="umami-widget__top-value">
-            <Transition name="umami-fade">
+          <div class="umami-summary__top-value">
+            <CrossFade>
               <span v-if="data" key="country-real">{{ data.top.country?.x ?? '—' }}</span>
-              <span v-else key="country-skel" class="umami-widget__skeleton-text"></span>
-            </Transition>
+              <SkeletonText v-else key="country-skel" />
+            </CrossFade>
           </div>
           <div>referrers</div>
-          <div class="umami-widget__top-value">
-            <Transition name="umami-fade">
+          <div class="umami-summary__top-value">
+            <CrossFade>
               <span v-if="data" key="ref-real">{{ data.top.referrer?.x ?? '—' }}</span>
-              <span v-else key="ref-skel" class="umami-widget__skeleton-text"></span>
-            </Transition>
+              <SkeletonText v-else key="ref-skel" />
+            </CrossFade>
           </div>
           <div>browser</div>
-          <div class="umami-widget__top-value">
-            <Transition name="umami-fade">
+          <div class="umami-summary__top-value">
+            <CrossFade>
               <span v-if="data" key="br-real">{{ data.top.browser?.x ?? '—' }}</span>
-              <span v-else key="br-skel" class="umami-widget__skeleton-text"></span>
-            </Transition>
+              <SkeletonText v-else key="br-skel" />
+            </CrossFade>
           </div>
         </div>
       </div>
@@ -166,11 +144,11 @@ onUnmounted(() => abortController?.abort());
 
     <hr class="umami-widget__divider" />
 
-    <div class="umami-widget__bars">
-      <div v-for="i in 7" :key="i - 1" class="umami-widget__bar-cell">
+    <div class="umami-summary__bars">
+      <div v-for="i in 7" :key="i - 1" class="umami-summary__bar-cell">
         <div
-          class="umami-widget__bar"
-          :class="{ 'umami-widget__bar--skeleton': !data }"
+          class="umami-summary__bar"
+          :class="{ 'umami-summary__bar--skeleton': !data }"
           :style="{
             height: barHeightFor(i - 1),
             animationDelay: !data ? `${(i - 1) * 80}ms` : undefined,
@@ -179,94 +157,70 @@ onUnmounted(() => abortController?.abort());
       </div>
     </div>
 
-    <div class="umami-widget__labels">
-      <div v-for="i in 7" :key="i - 1" class="umami-widget__label-cell">
-        <Transition name="umami-fade">
-          <div v-if="data" :key="`real-${i - 1}`" class="umami-widget__label-content">
-            <div class="umami-widget__weekday">
+    <div class="umami-summary__labels">
+      <div v-for="i in 7" :key="i - 1" class="umami-summary__label-cell">
+        <CrossFade>
+          <div v-if="data" :key="`real-${i - 1}`" class="umami-summary__label-content">
+            <div class="umami-summary__weekday">
               {{ data.daily[i - 1] ? formatWeekday(data.daily[i - 1].date) : '' }}
             </div>
-            <div class="umami-widget__day">
+            <div class="umami-summary__day">
               {{ data.daily[i - 1] ? formatDay(data.daily[i - 1].date) : '' }}
             </div>
           </div>
-          <div v-else :key="`skel-${i - 1}`" class="umami-widget__label-content">
-            <div class="umami-widget__skeleton-text umami-widget__skeleton-text--narrow"></div>
-            <div class="umami-widget__skeleton-text umami-widget__skeleton-text--narrow"></div>
+          <div v-else :key="`skel-${i - 1}`" class="umami-summary__label-content">
+            <SkeletonText variant="narrow" />
+            <SkeletonText variant="narrow" />
           </div>
-        </Transition>
+        </CrossFade>
       </div>
     </div>
-
-    <div class="umami-widget__footer">powered by Umami</div>
-  </div>
+  </WidgetFrame>
 </template>
 
-<style>
-:root {
-  --umami-bg: #eeebb0;
-  --umami-fg: #72715a;
-  --umami-bar-bottom: #d8d6ab;
-}
-
-.pane:has(.umami-widget) {
-  background-color: var(--umami-bg) !important;
-  border-radius: 1.25rem !important;
-  container-type: inline-size;
-  container-name: umami-pane;
-}
-
-.umami-widget {
-  width: 100%;
-  color: var(--umami-fg);
-  font-family: 'Arial', sans-serif;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.umami-widget__head {
+<style scoped>
+.umami-summary__head {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
   column-gap: 2.5rem;
   align-items: start;
 }
 
-.umami-widget__col {
+.umami-summary__col {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.umami-widget__header {
+.umami-summary__header {
   font-size: 1.25rem;
   margin-bottom: 0.5rem;
 }
 
-.umami-widget__arrow {
+.umami-summary__arrow {
   width: 3rem;
   height: 3rem;
   margin-top: 0.25rem;
   color: var(--umami-fg);
 }
 
-.umami-widget__arrow--down {
+.umami-summary__arrow--down {
   transform: rotate(180deg);
 }
 
-.umami-widget__total-count {
+.umami-summary__total-count {
   font-size: 3.75rem;
   line-height: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
-.umami-widget__total-count > * {
+.umami-summary__total-count > :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
 
-.umami-widget__top-grid {
+.umami-summary__top-grid {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 1rem;
@@ -274,25 +228,18 @@ onUnmounted(() => abortController?.abort());
   line-height: 1.2;
 }
 
-.umami-widget__top-value {
+.umami-summary__top-value {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
-.umami-widget__top-value > * {
+.umami-summary__top-value > :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
 
-.umami-widget__divider {
-  border: 0;
-  border-top: 1px solid var(--umami-fg);
-  opacity: 0.45;
-  margin: 0;
-}
-
-.umami-widget__bars {
+.umami-summary__bars {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   column-gap: 1rem;
@@ -302,14 +249,14 @@ onUnmounted(() => abortController?.abort());
   margin-bottom: 0.5rem;
 }
 
-.umami-widget__bar-cell {
+.umami-summary__bar-cell {
   display: flex;
   justify-content: center;
   align-items: end;
   height: 100%;
 }
 
-.umami-widget__bar {
+.umami-summary__bar {
   position: relative;
   width: 70%;
   min-height: 1px;
@@ -320,7 +267,7 @@ onUnmounted(() => abortController?.abort());
     opacity 0.4s ease;
 }
 
-.umami-widget__bar::before {
+.umami-summary__bar::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -329,86 +276,18 @@ onUnmounted(() => abortController?.abort());
   transition: opacity 0.4s ease;
 }
 
-.umami-widget__bar--skeleton::before {
+.umami-summary__bar--skeleton::before {
   opacity: 1;
   animation: umami-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-widget__skeleton-text {
-  display: inline-block;
-  width: 100%;
-  max-width: 8rem;
-  height: 0.75em;
-  border-radius: 3px;
-  background-color: var(--umami-fg);
-  opacity: 0.45;
-  animation: umami-text-pulse 1.4s ease-in-out infinite;
-  vertical-align: middle;
-}
-
-.umami-widget__skeleton-text--total {
-  height: 0.7em;
-  max-width: 6ch;
-}
-
-.umami-widget__skeleton-text--narrow {
-  max-width: 1.75rem;
-  height: 0.7em;
-  margin: 0 auto;
-}
-
-@keyframes umami-bar-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-}
-
-@keyframes umami-text-pulse {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 0.15;
-  }
-}
-
-.umami-fade-enter-active,
-.umami-fade-leave-active {
-  transition: opacity 0.4s ease;
-  animation: none;
-}
-
-.umami-fade-enter-from,
-.umami-fade-leave-to {
-  opacity: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .umami-widget__bar,
-  .umami-widget__bar::before,
-  .umami-fade-enter-active,
-  .umami-fade-leave-active {
-    transition: none;
-  }
-  .umami-widget__bar--skeleton::before,
-  .umami-widget__skeleton-text {
-    animation: none;
-    opacity: 0.3;
-  }
-}
-
-.umami-widget__labels {
+.umami-summary__labels {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   column-gap: 1rem;
 }
 
-.umami-widget__label-cell {
+.umami-summary__label-cell {
   text-align: center;
   font-size: 0.95rem;
   line-height: 1.2;
@@ -416,25 +295,30 @@ onUnmounted(() => abortController?.abort());
   grid-template-columns: minmax(0, 1fr);
 }
 
-.umami-widget__label-cell > * {
+.umami-summary__label-cell > :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
 
-.umami-widget__label-content {
+.umami-summary__label-content {
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
 }
 
-.umami-widget__footer {
-  text-align: right;
-  font-size: 0.75rem;
-  opacity: 0.7;
+@media (prefers-reduced-motion: reduce) {
+  .umami-summary__bar,
+  .umami-summary__bar::before {
+    transition: none;
+  }
+  .umami-summary__bar--skeleton::before {
+    animation: none;
+    opacity: 0.3;
+  }
 }
 
 @container umami-pane (max-width: 440px) {
-  .umami-widget__head {
+  .umami-summary__head {
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas:
       'visitors total'
@@ -442,26 +326,26 @@ onUnmounted(() => abortController?.abort());
     row-gap: 1rem;
     column-gap: 1.5rem;
   }
-  .umami-widget__col--visitors {
+  .umami-summary__col--visitors {
     grid-area: visitors;
   }
-  .umami-widget__col--total {
+  .umami-summary__col--total {
     grid-area: total;
   }
-  .umami-widget__col--top {
+  .umami-summary__col--top {
     grid-area: top;
   }
 }
 
 @container umami-pane (max-width: 320px) {
-  .umami-widget__head {
+  .umami-summary__head {
     grid-template-columns: 1fr;
     grid-template-areas:
       'visitors'
       'total'
       'top';
   }
-  .umami-widget__total-count {
+  .umami-summary__total-count {
     font-size: 3rem;
   }
 }

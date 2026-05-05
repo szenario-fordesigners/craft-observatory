@@ -14,7 +14,7 @@ use szenario\craftumamiis\models\Settings;
 use szenario\craftumamiis\services\StatsReport;
 use szenario\craftumamiis\services\SyncCoordinator;
 use szenario\craftumamiis\services\UmamiClient;
-use szenario\craftumamiis\widgets\UmamiIsWidget;
+use szenario\craftumamiis\widgets\UmamiIsSummaryWidget;
 use yii\base\Event;
 
 /**
@@ -102,7 +102,7 @@ class UmamiIs extends Plugin
         // Register event handlers here ...
         // (see https://craftcms.com/docs/5.x/extend/events.html to get started)
         Event::on(Dashboard::class, Dashboard::EVENT_REGISTER_WIDGET_TYPES, function (RegisterComponentTypesEvent $event) {
-            $event->types[] = UmamiIsWidget::class;
+            $event->types[] = UmamiIsSummaryWidget::class;
         });
     }
 }

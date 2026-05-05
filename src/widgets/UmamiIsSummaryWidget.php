@@ -6,14 +6,11 @@ use Craft;
 use craft\base\Widget;
 use szenario\craftumamiis\assetbundles\craftumamiiswidget\CraftUmamiIsWidgetAsset;
 
-/**
- * Umami Is Widget widget type
- */
-class UmamiIsWidget extends Widget
+class UmamiIsSummaryWidget extends Widget
 {
     public static function displayName(): string
     {
-        return "";
+        return '';
     }
 
     public static function isSelectable(): bool
@@ -30,6 +27,11 @@ class UmamiIsWidget extends Widget
     {
         Craft::$app->getView()->registerAssetBundle(CraftUmamiIsWidgetAsset::class);
 
-        return Craft::$app->getView()->renderTemplate('umami-is/_widget');
+        return Craft::$app->getView()->renderTemplate('umami-is/_widget-shell', [
+            'widgetName' => 'summary',
+            'props' => [
+                'locale' => Craft::$app->getLocale()->id,
+            ],
+        ]);
     }
 }
