@@ -21,6 +21,8 @@ const currentData = ref<WebsitePageviews | null>(props.pageviews ?? null);
 const statsData = ref<WebsiteStats | null>(null);
 const statsLoading = ref(false);
 
+const pageTab = ref<'url' | 'entry' | 'exit'>('url');
+const sourceTab = ref<'referrer' | 'channel'>('referrer');
 const envTab = ref<'browser' | 'os' | 'device'>('browser');
 const locTab = ref<'country' | 'region' | 'city'>('country');
 
@@ -132,19 +134,73 @@ watch(
     <div class="grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
       <!-- Left Column: Pages & Sources -->
       <div class="space-y-8">
+        <!-- Pages Group -->
         <div>
-          <MetricList
-            label="Visitors per Page"
-            :data="metricsData['url'] ?? []"
-            :loading="metricsLoading"
-          />
+          <div class="mb-2 flex space-x-6 border-b border-gray-200 pb-2">
+            <button
+              @click="pageTab = 'url'"
+              :class="[
+                'flex-1 text-center text-sm font-semibold',
+                pageTab === 'url'
+                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700',
+              ]"
+            >
+              Path
+            </button>
+            <button
+              @click="pageTab = 'entry'"
+              :class="[
+                'flex-1 text-center text-sm font-semibold',
+                pageTab === 'entry'
+                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700',
+              ]"
+            >
+              Entry page
+            </button>
+            <button
+              @click="pageTab = 'exit'"
+              :class="[
+                'flex-1 text-center text-sm font-semibold',
+                pageTab === 'exit'
+                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700',
+              ]"
+            >
+              Exit page
+            </button>
+          </div>
+          <MetricList :data="metricsData[pageTab] ?? []" :loading="metricsLoading" />
         </div>
+
+        <!-- Sources Group -->
         <div>
-          <MetricList
-            label="Sources"
-            :data="metricsData['referrer'] ?? []"
-            :loading="metricsLoading"
-          />
+          <div class="mb-2 flex space-x-6 border-b border-gray-200 pb-2">
+            <button
+              @click="sourceTab = 'referrer'"
+              :class="[
+                'flex-1 text-center text-sm font-semibold',
+                sourceTab === 'referrer'
+                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700',
+              ]"
+            >
+              Referrers
+            </button>
+            <button
+              @click="sourceTab = 'channel'"
+              :class="[
+                'flex-1 text-center text-sm font-semibold',
+                sourceTab === 'channel'
+                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700',
+              ]"
+            >
+              Channels
+            </button>
+          </div>
+          <MetricList :data="metricsData[sourceTab] ?? []" :loading="metricsLoading" />
         </div>
       </div>
 

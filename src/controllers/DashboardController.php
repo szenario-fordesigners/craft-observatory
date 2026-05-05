@@ -8,7 +8,7 @@ use yii\web\Response;
 
 class DashboardController extends Controller
 {
-    private const DEFAULT_METRIC_TYPES = ['url', 'referrer', 'browser', 'os', 'device', 'country', 'region', 'city'];
+    private const DEFAULT_METRIC_TYPES = ['url', 'entry', 'exit', 'referrer', 'channel', 'browser', 'os', 'device', 'country', 'region', 'city'];
     private const ALLOWED_PAGEVIEW_UNITS = ['hour', 'day', 'month', 'year'];
 
     /**
