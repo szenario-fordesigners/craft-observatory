@@ -4,9 +4,11 @@ import './shared/styles.css';
 
 import { createApp, type Component } from 'vue';
 import Summary from './widget/Summary.vue';
+import WorldMap from './widget/WorldMap.vue';
 
 const widgets: Record<string, Component> = {
   summary: Summary,
+  'world-map': WorldMap,
 };
 
 document.addEventListener('DOMContentLoaded', () => {

@@ -103,6 +103,7 @@ class UmamiIs extends Plugin
         // (see https://craftcms.com/docs/5.x/extend/events.html to get started)
         Event::on(Dashboard::class, Dashboard::EVENT_REGISTER_WIDGET_TYPES, function (RegisterComponentTypesEvent $event) {
             $event->types[] = UmamiIsSummaryWidget::class;
+            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsWorldMapWidget::class;
         });
     }
 }
