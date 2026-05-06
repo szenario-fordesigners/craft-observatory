@@ -6,11 +6,15 @@ import { createApp, type Component } from 'vue';
 import Summary from './widget/Summary.vue';
 import WorldMap from './widget/WorldMap.vue';
 import Referrers from './widget/Referrers.vue';
+import Countries from './widget/Countries.vue';
+import Devices from './widget/Devices.vue';
 
 const widgets: Record<string, Component> = {
   summary: Summary,
   'world-map': WorldMap,
   referrers: Referrers,
+  countries: Countries,
+  devices: Devices,
 };
 
 document.addEventListener('DOMContentLoaded', () => {

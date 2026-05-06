@@ -105,6 +105,8 @@ class UmamiIs extends Plugin
             $event->types[] = UmamiIsSummaryWidget::class;
             $event->types[] = \szenario\craftumamiis\widgets\UmamiIsWorldMapWidget::class;
             $event->types[] = \szenario\craftumamiis\widgets\UmamiIsReferrersWidget::class;
+            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsCountriesWidget::class;
+            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsDevicesWidget::class;
         });
     }
 }

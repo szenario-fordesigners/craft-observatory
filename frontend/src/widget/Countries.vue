@@ -5,15 +5,35 @@ import CrossFade from '@/shared/CrossFade.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
 
+const props = defineProps<{
+  locale?: string;
+}>();
+
 interface MetricEntry {
   x: string;
   y: number;
 }
 
-const { data, loading, error } = useWidgetData<MetricEntry[]>('umami-is/dashboard/get-metrics?type=referrer');
+const { data, loading, error } = useWidgetData<MetricEntry[]>('umami-is/dashboard/get-metrics?type=country');
 
-// Limit the number of referrers to display so it doesn't get too long
-const displayedReferrers = computed(() => {
+const regionNames = new Intl.DisplayNames([props.locale || 'en'], { type: 'region' });
+
+const getCountryName = (code: string) => {
+  if (code === 'Unknown') return code;
+  try {
+    return regionNames.of(code) || code;
+  } catch (e) {
+    return code;
+  }
+};
+
+const getFlagUrl = (code: string) => {
+  if (!code || code === 'Unknown') return ''; // Or a fallback generic icon if you have one
+  return `https://flagcdn.com/w20/${code.toLowerCase()}.png`;
+};
+
+// Limit the number of countries to display so it doesn't get too long
+const displayedCountries = computed(() => {
   if (!data.value) return [];
   // Sort by visitors descending just in case, and take top 5
   return [...data.value].sort((a, b) => b.y - a.y).slice(0, 5);
@@ -28,15 +48,11 @@ const listItems = computed(() => {
       isSkeleton: true
     }));
   }
-  return displayedReferrers.value.map(item => ({
+  return displayedCountries.value.map(item => ({
     ...item,
     isSkeleton: false
   }));
 });
-
-const getFaviconUrl = (domain: string) => {
-  return `https://icons.duckduckgo.com/ip3/${domain}.ico`;
-};
 
 // Calculate max visitors to scale background bars
 const maxVisitors = computed(() => {
@@ -50,56 +66,61 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
 
 <template>
   <WidgetFrame>
-    <div class="umami-referrers__head">
-      <div class="umami-referrers__col">
-        <div class="umami-referrers__header">top referrers</div>
-        <div class="umami-referrers__subheader">last 7 days</div>
+    <div class="umami-countries__head">
+      <div class="umami-countries__col">
+        <div class="umami-countries__header">top countries</div>
+        <div class="umami-countries__subheader">last 7 days</div>
       </div>
     </div>
 
     <hr class="umami-widget__divider" />
 
-    <div class="umami-referrers__list-container">
-      <div v-if="error" class="umami-referrers__error">
-        Failed to load referrers
+    <div class="umami-countries__list-container">
+      <div v-if="error" class="umami-countries__error">
+        Failed to load countries
       </div>
-      <div v-else-if="!loading && listItems.length === 0" class="umami-referrers__empty">
-        No referrers found
+      <div v-else-if="!loading && listItems.length === 0" class="umami-countries__empty">
+        No countries found
       </div>
-      <div v-else class="umami-referrers__list">
+      <div v-else class="umami-countries__list">
         <div 
           v-for="(item, index) in listItems" 
           :key="item.x" 
-          class="umami-referrers__item"
+          class="umami-countries__item"
         >
           <!-- Background bar -->
           <div 
-            class="umami-referrers__bar-bg"
-            :class="{ 'umami-referrers__bar-bg--skeleton': item.isSkeleton }"
+            class="umami-countries__bar-bg"
+            :class="{ 'umami-countries__bar-bg--skeleton': item.isSkeleton }"
             :style="{ 
               width: item.isSkeleton ? '100%' : `${(item.y / maxVisitors) * 100}%`,
               animationDelay: item.isSkeleton ? getSkeletonDelay(index) : undefined 
             }"
           ></div>
           
-          <div class="umami-referrers__item-content">
-            <div class="umami-referrers__domain-group">
+          <div class="umami-countries__item-content">
+            <div class="umami-countries__domain-group">
               <CrossFade>
                 <div 
                   v-if="item.isSkeleton" 
                   key="skel-icon" 
-                  class="umami-referrers__skeleton-icon"
+                  class="umami-countries__skeleton-icon"
                   :style="{ animationDelay: getSkeletonDelay(index) }"
                 ></div>
                 <img 
-                  v-else 
+                  v-else-if="getFlagUrl(item.x)"
                   key="real-icon"
-                  :src="getFaviconUrl(item.x)" 
-                  class="umami-referrers__favicon" 
+                  :src="getFlagUrl(item.x)" 
+                  class="umami-countries__favicon" 
                   alt="" 
                   loading="lazy" 
                   @error="$event.target.style.display='none'"
                 />
+                <div 
+                  v-else 
+                  key="no-icon" 
+                  class="umami-countries__no-icon"
+                ></div>
               </CrossFade>
 
               <CrossFade>
@@ -109,7 +130,7 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
                   style="width: 140px;" 
                   :style="{ animationDelay: getSkeletonDelay(index) }"
                 />
-                <span v-else key="real-text" class="umami-referrers__domain">{{ item.x }}</span>
+                <span v-else key="real-text" class="umami-countries__domain">{{ getCountryName(item.x) }}</span>
               </CrossFade>
             </div>
             
@@ -120,7 +141,7 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
                 style="width: 30px;" 
                 :style="{ animationDelay: getSkeletonDelay(index) }"
               />
-              <span v-else key="real-val" class="umami-referrers__visitors">{{ item.y }}</span>
+              <span v-else key="real-val" class="umami-countries__visitors">{{ item.y }}</span>
             </CrossFade>
           </div>
         </div>
@@ -130,47 +151,47 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
 </template>
 
 <style scoped>
-.umami-referrers__head {
+.umami-countries__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
 }
 
-.umami-referrers__col {
+.umami-countries__col {
   display: flex;
   flex-direction: column;
 }
 
-.umami-referrers__header {
+.umami-countries__header {
   font-size: 1.125rem;
   font-weight: 500;
   color: var(--umami-fg);
   line-height: 1;
 }
 
-.umami-referrers__subheader {
+.umami-countries__subheader {
   font-size: 0.875rem;
   color: var(--umami-fg);
   opacity: 0.7;
   margin-top: 0.25rem;
 }
 
-.umami-referrers__list-container {
+.umami-countries__list-container {
   position: relative;
   min-height: 200px;
   display: flex;
   flex-direction: column;
 }
 
-.umami-referrers__list {
+.umami-countries__list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
 }
 
-.umami-referrers__item {
+.umami-countries__item {
   position: relative;
   display: flex;
   align-items: center;
@@ -179,7 +200,7 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
   border-radius: 4px;
 }
 
-.umami-referrers__bar-bg {
+.umami-countries__bar-bg {
   position: absolute;
   top: 0;
   left: 0;
@@ -190,12 +211,12 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
   transition: width 0.5s ease-out;
 }
 
-.umami-referrers__bar-bg--skeleton {
+.umami-countries__bar-bg--skeleton {
   opacity: 0.4;
   animation: umami-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-referrers__item-content {
+.umami-countries__item-content {
   position: relative;
   z-index: 1;
   display: flex;
@@ -205,29 +226,36 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
   padding: 0 0.5rem;
 }
 
-.umami-referrers__domain-group {
+.umami-countries__domain-group {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   overflow: hidden;
 }
 
-.umami-referrers__favicon {
-  width: 16px;
-  height: 16px;
+.umami-countries__favicon {
+  width: 20px;
+  height: auto;
   object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+
+.umami-countries__no-icon {
+  width: 20px;
+  height: 14px;
   flex-shrink: 0;
 }
 
-.umami-referrers__skeleton-icon {
-  width: 16px;
-  height: 16px;
+.umami-countries__skeleton-icon {
+  width: 20px;
+  height: 14px;
   border-radius: 2px;
   background-color: color-mix(in srgb, var(--umami-fg) 20%, transparent);
   animation: umami-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-referrers__domain {
+.umami-countries__domain {
   font-size: 0.95rem;
   color: var(--umami-fg);
   white-space: nowrap;
@@ -235,15 +263,15 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
   text-overflow: ellipsis;
 }
 
-.umami-referrers__visitors {
+.umami-countries__visitors {
   font-size: 0.95rem;
   font-weight: 500;
   color: var(--umami-fg);
   padding-left: 1rem;
 }
 
-.umami-referrers__error,
-.umami-referrers__empty {
+.umami-countries__error,
+.umami-countries__empty {
   flex: 1;
   display: flex;
   align-items: center;

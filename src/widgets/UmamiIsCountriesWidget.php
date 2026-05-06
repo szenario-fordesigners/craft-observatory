@@ -1,0 +1,53 @@
+<?php
+
+namespace szenario\craftumamiis\widgets;
+
+use craft\base\Widget;
+use szenario\craftumamiis\assetbundles\craftumamiiswidget\CraftUmamiIsWidgetAsset;
+use szenario\craftumamiis\UmamiIs;
+use Craft;
+
+/**
+ * Top Countries Widget
+ */
+class UmamiIsCountriesWidget extends Widget
+{
+    /**
+     * @inheritdoc
+     */
+    public static function displayName(): string
+    {
+        return 'Umami.is Top Countries';
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public static function icon(): ?string
+    {
+        return 'flag';
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public static function maxColspan(): ?int
+    {
+        return 3;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getBodyHtml(): ?string
+    {
+        Craft::$app->getView()->registerAssetBundle(CraftUmamiIsWidgetAsset::class);
+
+        return Craft::$app->getView()->renderTemplate('umami-is/_widget-shell', [
+            'widgetName' => 'countries',
+            'props' => [
+                'locale' => Craft::$app->getLocale()->id,
+            ],
+        ]);
+    }
+}
