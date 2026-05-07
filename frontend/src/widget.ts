@@ -19,18 +19,39 @@ const widgets: Record<string, Component> = {
   heatmap: Heatmap,
 };
 
+const mounted = new WeakSet<HTMLElement>();
+
+function mountWidget(el: HTMLElement): void {
+  if (mounted.has(el)) return;
+  const name = el.dataset.umamiWidget;
+  if (!name) return;
+  const component = widgets[name];
+  if (!component) {
+    console.warn(`Unknown umami widget: ${name}`);
+    return;
+  }
+  mounted.add(el);
+  const props = JSON.parse(el.dataset.props || '{}');
+  createApp(component, props).mount(el);
+}
+
+function mountAll(root: Document | HTMLElement): void {
+  (root as Element).querySelectorAll<HTMLElement>('[data-umami-widget]').forEach(mountWidget);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll<HTMLElement>('[data-umami-widget]').forEach((el) => {
-    const name = el.dataset.umamiWidget;
-    if (!name) return;
+  mountAll(document);
 
-    const component = widgets[name];
-    if (!component) {
-      console.warn(`Unknown umami widget: ${name}`);
-      return;
+  new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.dataset.umamiWidget) {
+          mountWidget(node);
+        } else {
+          mountAll(node);
+        }
+      }
     }
-
-    const props = JSON.parse(el.dataset.props || '{}');
-    createApp(component, props).mount(el);
-  });
+  }).observe(document.body, { childList: true, subtree: true });
 });
