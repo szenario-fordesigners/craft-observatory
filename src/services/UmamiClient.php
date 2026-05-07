@@ -6,6 +6,7 @@ use Craft;
 use craft\base\Component;
 use craft\helpers\App;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Pool;
 use GuzzleHttp\Psr7\Request;
 use szenario\craftumamiis\UmamiIs;
@@ -19,6 +20,57 @@ use szenario\craftumamiis\UmamiIs;
  */
 class UmamiClient extends Component
 {
+    /**
+     * Reports plugin connectivity status: whether settings are filled in, and whether
+     * the most recent Umami request authenticated successfully.
+     *
+     * The auth flag is sticky and cache-backed — set when a request returns 401 and
+     * cleared on the next 2xx response — so it self-corrects once the key is fixed.
+     *
+     * @return array{configured:bool,apiKeyValid:bool}
+     */
+    public function getStatus(): array
+    {
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $url = App::parseEnv($settings->umamiUrl);
+        $apiKey = App::parseEnv($settings->umamiApiKey);
+
+        $configured = !empty($websiteId) && !empty($url) && !empty($apiKey);
+
+        return [
+            'configured' => $configured,
+            'apiKeyValid' => $configured ? !$this->hasAuthError($websiteId) : false,
+        ];
+    }
+
+    private function authErrorCacheKey(string $websiteId): string
+    {
+        return "umami_auth_error_{$websiteId}";
+    }
+
+    private function hasAuthError(string $websiteId): bool
+    {
+        return Craft::$app->getCache()->get($this->authErrorCacheKey($websiteId)) === true;
+    }
+
+    private function markAuthError(string $websiteId): void
+    {
+        Craft::$app->getCache()->set($this->authErrorCacheKey($websiteId), true, 3600);
+    }
+
+    private function clearAuthError(string $websiteId): void
+    {
+        Craft::$app->getCache()->delete($this->authErrorCacheKey($websiteId));
+    }
+
+    private function isAuthError(\Throwable $e): bool
+    {
+        return $e instanceof RequestException
+            && $e->hasResponse()
+            && $e->getResponse()?->getStatusCode() === 401;
+    }
+
     /**
      * Returns a shared Guzzle client, base URL, headers and websiteId for Umami API calls.
      *
@@ -76,7 +128,7 @@ class UmamiClient extends Component
         if ($ctx === null) {
             return null;
         }
-        [$client, $baseUrl, $headers] = $ctx;
+        [$client, $baseUrl, $headers, $websiteId] = $ctx;
 
         try {
             $response = $client->request('GET', "{$baseUrl}{$path}", [
@@ -90,11 +142,16 @@ class UmamiClient extends Component
                 return null;
             }
 
+            $this->clearAuthError($websiteId);
+
             if ($cacheKey !== null && $cacheDuration > 0) {
                 $cache->set($cacheKey, $body, $cacheDuration);
             }
             return $body;
         } catch (GuzzleException $e) {
+            if ($this->isAuthError($e)) {
+                $this->markAuthError($websiteId);
+            }
             Craft::error("Umami GET {$path} failed: {$e->getMessage()}", __METHOD__);
         } catch (\Throwable $e) {
             Craft::error("Umami GET {$path} unexpected error: {$e->getMessage()}", __METHOD__);
@@ -118,7 +175,7 @@ class UmamiClient extends Component
             return [];
         }
 
-        [$client, $baseUrl, $headers] = $ctx;
+        [$client, $baseUrl, $headers, $websiteId] = $ctx;
 
         $results = [];
         foreach ($days as $day) {
@@ -147,7 +204,9 @@ class UmamiClient extends Component
 
         $pool = new Pool($client, $requests(), [
             'concurrency' => max(1, $concurrency),
-            'fulfilled' => function ($response, $index) use (&$results) {
+            'fulfilled' => function ($response, $index) use (&$results, $websiteId) {
+                $this->clearAuthError($websiteId);
+
                 $key = (string) $index;
                 $body = json_decode($response->getBody()->getContents(), true);
 
@@ -173,7 +232,11 @@ class UmamiClient extends Component
                     }
                 }
             },
-            'rejected' => function ($reason, $index) use (&$results) {
+            'rejected' => function ($reason, $index) use (&$results, $websiteId) {
+                if ($reason instanceof \Throwable && $this->isAuthError($reason)) {
+                    $this->markAuthError($websiteId);
+                }
+
                 $key = (string) $index;
 
                 if (str_starts_with($key, 'stats:')) {
@@ -308,7 +371,9 @@ class UmamiClient extends Component
 
         $pool = new Pool($client, $requests(), [
             'concurrency' => max(1, $concurrency),
-            'fulfilled' => function ($response, $index) use (&$results, $missing, $cache, $cacheDuration) {
+            'fulfilled' => function ($response, $index) use (&$results, $missing, $cache, $cacheDuration, $websiteId) {
+                $this->clearAuthError($websiteId);
+
                 $type = (string) $index;
                 $body = json_decode($response->getBody()->getContents(), true);
 
@@ -323,7 +388,10 @@ class UmamiClient extends Component
                     $cache->set($missing[$type], $body, $cacheDuration);
                 }
             },
-            'rejected' => function ($reason, $index) {
+            'rejected' => function ($reason, $index) use ($websiteId) {
+                if ($reason instanceof \Throwable && $this->isAuthError($reason)) {
+                    $this->markAuthError($websiteId);
+                }
                 Craft::error("Umami metrics request ({$index}) failed: {$reason}", __METHOD__);
             },
         ]);
@@ -335,6 +403,98 @@ class UmamiClient extends Component
         }
 
         return $results;
+    }
+
+    /**
+     * Fetches hourly visitor/pageview counts for many days concurrently.
+     *
+     * @param array<int,array{date:string,startAt:int,endAt:int}> $days
+     * @param int $concurrency
+     * @return array<string,array<int,array{hour:int,visitors:int,pageviews:int}>>
+     */
+    public function getHourlyPageviewsBatch(array $days, int $concurrency = 8): array
+    {
+        $ctx = $this->getUmamiHttpContext(10.0);
+        if ($ctx === null) {
+            return [];
+        }
+
+        [$client, $baseUrl, $headers, $websiteId] = $ctx;
+
+        $results = [];
+        foreach ($days as $day) {
+            $results[$day['date']] = [];
+        }
+
+        $requests = function () use ($days, $baseUrl, $headers) {
+            foreach ($days as $day) {
+                $uri = "{$baseUrl}/pageviews?startAt={$day['startAt']}&endAt={$day['endAt']}&unit=hour";
+                yield $day['date'] => new Request('GET', $uri, $headers);
+            }
+        };
+
+        $pool = new Pool($client, $requests(), [
+            'concurrency' => max(1, $concurrency),
+            'fulfilled' => function ($response, $index) use (&$results, $websiteId) {
+                $this->clearAuthError($websiteId);
+
+                $date = (string) $index;
+                $body = json_decode($response->getBody()->getContents(), true);
+                if (!\is_array($body) || !isset($body['pageviews'])) {
+                    return;
+                }
+                $results[$date] = $this->parseHourlyPageviews($body);
+            },
+            'rejected' => function ($reason, $index) use ($websiteId) {
+                if ($reason instanceof \Throwable && $this->isAuthError($reason)) {
+                    $this->markAuthError($websiteId);
+                }
+                Craft::error("Umami hourly pageviews ({$index}) failed: {$reason}", __METHOD__);
+            },
+        ]);
+
+        $pool->promise()->wait();
+
+        return $results;
+    }
+
+    /**
+     * @param array<mixed> $body Raw /pageviews response body.
+     * @return array<int,array{hour:int,visitors:int,pageviews:int}>
+     */
+    private function parseHourlyPageviews(array $body): array
+    {
+        $pvByHour = [];
+        foreach ($body['pageviews'] ?? [] as $entry) {
+            $ts = $entry['t'] ?? $entry['x'] ?? null;
+            if ($ts === null) {
+                continue;
+            }
+            $hour = (int) date('G', strtotime((string) $ts));
+            $pvByHour[$hour] = (int) ($entry['y'] ?? 0);
+        }
+
+        $sessionsByHour = [];
+        foreach ($body['sessions'] ?? [] as $entry) {
+            $ts = $entry['t'] ?? $entry['x'] ?? null;
+            if ($ts === null) {
+                continue;
+            }
+            $hour = (int) date('G', strtotime((string) $ts));
+            $sessionsByHour[$hour] = (int) ($entry['y'] ?? 0);
+        }
+
+        $allHours = array_unique(array_merge(array_keys($pvByHour), array_keys($sessionsByHour)));
+        $rows = [];
+        foreach ($allHours as $hour) {
+            $rows[] = [
+                'hour' => $hour,
+                'visitors' => $sessionsByHour[$hour] ?? 0,
+                'pageviews' => $pvByHour[$hour] ?? 0,
+            ];
+        }
+
+        return $rows;
     }
 
     /**

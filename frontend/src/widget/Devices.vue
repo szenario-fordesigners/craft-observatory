@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
+import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
 
 interface MetricEntry {
@@ -10,18 +11,24 @@ interface MetricEntry {
   y: number;
 }
 
-const { data, loading, error } = useWidgetData<MetricEntry[]>('umami-is/dashboard/get-metrics?type=device');
+interface MetricsResponse {
+  data: MetricEntry[];
+  _status?: UmamiStatus;
+}
 
-// Limit the number of devices to display
+const hasError = (s: UmamiStatus | undefined): boolean =>
+  !!s && (!s.configured || !s.apiKeyValid);
+
+const { data, loading, error } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?type=device');
+
 const displayedDevices = computed(() => {
-  if (!data.value) return [];
-  // Sort by visitors descending and take top 5
-  return [...data.value].sort((a, b) => b.y - a.y).slice(0, 5);
+  if (!data.value?.data) return [];
+  return [...data.value.data].sort((a, b) => b.y - a.y).slice(0, 5);
 });
 
 // Provide a unified list of either real items or fake items for skeleton loading
 const listItems = computed(() => {
-  if (loading.value && (!data.value || data.value.length === 0)) {
+  if (loading.value && (!data.value?.data || data.value.data.length === 0)) {
     return Array.from({ length: 5 }).map((_, i) => ({
       x: `skel-${i}`,
       y: 0,
@@ -34,10 +41,9 @@ const listItems = computed(() => {
   }));
 });
 
-// Calculate max visitors to scale background bars
 const maxVisitors = computed(() => {
-  if (!data.value || data.value.length === 0) return 0;
-  return Math.max(0, ...data.value.map((d) => d.y));
+  if (!data.value?.data || data.value.data.length === 0) return 0;
+  return Math.max(0, ...data.value.data.map((d) => d.y));
 });
 
 // Stagger delays for a nice cascade effect
@@ -52,6 +58,9 @@ const formatDeviceName = (name: string) => {
 
 <template>
   <WidgetFrame>
+    <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
+
+    <template v-else>
     <div class="umami-devices__head">
       <div class="umami-devices__col">
         <div class="umami-devices__header">top devices</div>
@@ -142,6 +151,7 @@ const formatDeviceName = (name: string) => {
         </div>
       </div>
     </div>
+    </template>
   </WidgetFrame>
 </template>
 

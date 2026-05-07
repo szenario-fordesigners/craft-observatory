@@ -12,6 +12,25 @@ class DashboardController extends Controller
     private const ALLOWED_PAGEVIEW_UNITS = ['hour', 'day', 'month', 'year'];
 
     /**
+     * Returns a 7×24 heatmap of average visitor counts by weekday and hour of day.
+     * Accepts an optional `days` query param (default 90) controlling the lookback window.
+     */
+    public function actionGetHeatmapData(): Response
+    {
+        $request = \Craft::$app->getRequest();
+        $days = max(1, (int) $request->getParam('days', 90));
+
+        \Craft::$app->getSession()->close();
+
+        $plugin = UmamiIs::getInstance();
+        $plugin->sync->autoSyncMissingDays($days);
+
+        return $this->asJson($plugin->stats->getHeatmapData($days) + [
+            '_status' => $plugin->client->getStatus(),
+        ]);
+    }
+
+    /**
      * Compact 7-day summary for the dashboard widget.
      */
     public function actionGetWidgetSummary(): Response
@@ -20,7 +39,9 @@ class DashboardController extends Controller
         $plugin = UmamiIs::getInstance();
         $plugin->sync->autoSyncMissingDays();
 
-        return $this->asJson($plugin->stats->getWidgetSummary());
+        return $this->asJson($plugin->stats->getWidgetSummary() + [
+            '_status' => $plugin->client->getStatus(),
+        ]);
     }
 
     /**
@@ -48,6 +69,7 @@ class DashboardController extends Controller
             'pageviews' => $includePageviews ? $plugin->client->getPageviews($startAt, $endAt, $unit) : null,
             'stats' => $plugin->client->getStats($startAt, $endAt),
             'metrics' => $metrics,
+            '_status' => $plugin->client->getStatus(),
         ]);
     }
 
@@ -128,13 +150,17 @@ class DashboardController extends Controller
             return $this->asFailure('Invalid metric type', ['error' => 'Invalid metric type']);
         }
 
-        $metrics = UmamiIs::getInstance()->client->getMetrics(
+        $plugin = UmamiIs::getInstance();
+        $metrics = $plugin->client->getMetrics(
             (int) $startAt,
             (int) $endAt,
             $types[0]
         );
 
-        return $this->asJson($metrics ?? []);
+        return $this->asJson([
+            'data' => $metrics ?? [],
+            '_status' => $plugin->client->getStatus(),
+        ]);
     }
 
     private function normalizePageviewUnit(mixed $unit): ?string

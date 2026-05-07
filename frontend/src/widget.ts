@@ -8,6 +8,7 @@ import WorldMap from './widget/WorldMap.vue';
 import Referrers from './widget/Referrers.vue';
 import Countries from './widget/Countries.vue';
 import Devices from './widget/Devices.vue';
+import Heatmap from './widget/Heatmap.vue';
 
 const widgets: Record<string, Component> = {
   summary: Summary,
@@ -15,6 +16,7 @@ const widgets: Record<string, Component> = {
   referrers: Referrers,
   countries: Countries,
   devices: Devices,
+  heatmap: Heatmap,
 };
 
 document.addEventListener('DOMContentLoaded', () => {

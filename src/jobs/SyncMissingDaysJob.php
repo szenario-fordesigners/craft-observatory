@@ -6,6 +6,7 @@ use Craft;
 use craft\queue\BaseJob;
 use szenario\craftumamiis\helpers\UmamiTime;
 use szenario\craftumamiis\records\DailyStats;
+use szenario\craftumamiis\records\HourlyStats;
 use szenario\craftumamiis\UmamiIs;
 
 /**
@@ -28,81 +29,121 @@ class SyncMissingDaysJob extends BaseJob
             $plugin = UmamiIs::getInstance();
 
             $todayStr = UmamiTime::dateOffset(0);
-            $wanted = [];
+
+            // Build the full set of historical dates in the window (excluding today).
+            $allDates = [];
             for ($i = 1; $i <= $this->days; $i++) {
-                $dateStr = UmamiTime::dateOffset($i);
-                if ($dateStr === $todayStr) {
-                    continue;
+                $ds = UmamiTime::dateOffset($i);
+                if ($ds !== $todayStr) {
+                    $allDates[$ds] = true;
                 }
-                $wanted[$dateStr] = true;
             }
 
-            if (empty($wanted)) {
+            if (empty($allDates)) {
                 Craft::info('SyncMissingDaysJob: no candidate dates in window.', 'umami-is');
                 return;
             }
 
-            $startDateStr = min(array_keys($wanted));
-            $existing = DailyStats::find()
+            $startDateStr = min(array_keys($allDates));
+
+            // — Daily stats pass —
+            $wantedDaily = $allDates;
+            $existingDaily = DailyStats::find()
                 ->select(['date'])
                 ->where(['websiteId' => $this->websiteId])
                 ->andWhere(['>=', 'date', $startDateStr])
                 ->column();
 
-            foreach ($existing as $existingDate) {
-                unset($wanted[$existingDate]);
+            foreach ($existingDaily as $d) {
+                unset($wantedDaily[$d]);
             }
 
-            if (empty($wanted)) {
-                Craft::info('SyncMissingDaysJob: all days already present in DB, nothing to fetch.', 'umami-is');
-                return;
-            }
-
-            $daySpecs = [];
-            foreach (array_keys($wanted) as $dateStr) {
-                [$startAt, $endAt] = UmamiTime::dayBounds($dateStr);
-                $daySpecs[] = [
-                    'date' => $dateStr,
-                    'startAt' => $startAt,
-                    'endAt' => $endAt,
-                ];
-            }
-
-            $missingCount = count($daySpecs);
-            Craft::info("SyncMissingDaysJob: {$missingCount} missing day(s) — fetching from Umami.", 'umami-is');
-            Craft::debug('SyncMissingDaysJob missing dates: ' . implode(', ', array_keys($wanted)), 'umami-is');
-
-            $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
-            $batch = $plugin->client->getDailyStatsAndMetricsBatch($daySpecs, $metricsTypes);
-
-            $total = count($daySpecs);
-            $done = 0;
-            $synced = 0;
-            $failed = 0;
-            foreach ($daySpecs as $day) {
-                $dateStr = $day['date'];
-                $row = $batch[$dateStr] ?? null;
-                $stats = $row['stats'] ?? null;
-                $errors = $row['errors'] ?? [];
-
-                if (empty($stats)) {
-                    $failed++;
-                    $reason = $errors ? implode('; ', $errors) : 'empty stats response';
-                    Craft::warning("SyncMissingDaysJob: failed for {$dateStr} — {$reason}", 'umami-is');
-                } elseif ($plugin->sync->syncDailyStats($dateStr, $stats, $row['metrics'] ?? [])) {
-                    $synced++;
-                    Craft::debug("SyncMissingDaysJob: saved {$dateStr}.", 'umami-is');
-                } else {
-                    $failed++;
-                    Craft::warning("SyncMissingDaysJob: DB save failed for {$dateStr}.", 'umami-is');
+            if (!empty($wantedDaily)) {
+                $daySpecs = [];
+                foreach (array_keys($wantedDaily) as $ds) {
+                    [$startAt, $endAt] = UmamiTime::dayBounds($ds);
+                    $daySpecs[] = ['date' => $ds, 'startAt' => $startAt, 'endAt' => $endAt];
                 }
 
-                $done++;
-                $this->setProgress($queue, $done / $total);
+                $missingCount = \count($daySpecs);
+                Craft::info("SyncMissingDaysJob: {$missingCount} missing daily stats day(s) — fetching.", 'umami-is');
+                Craft::debug('SyncMissingDaysJob missing dates: ' . implode(', ', array_keys($wantedDaily)), 'umami-is');
+
+                $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
+                $batch = $plugin->client->getDailyStatsAndMetricsBatch($daySpecs, $metricsTypes);
+
+                $total = \count($daySpecs);
+                $done = 0;
+                $synced = 0;
+                $failed = 0;
+                foreach ($daySpecs as $day) {
+                    $ds = $day['date'];
+                    $row = $batch[$ds] ?? null;
+                    $stats = $row['stats'] ?? null;
+                    $errors = $row['errors'] ?? [];
+
+                    if (empty($stats)) {
+                        $failed++;
+                        $reason = $errors ? implode('; ', $errors) : 'empty stats response';
+                        Craft::warning("SyncMissingDaysJob: failed for {$ds} — {$reason}", 'umami-is');
+                    } elseif ($plugin->sync->syncDailyStats($ds, $stats, $row['metrics'] ?? [])) {
+                        $synced++;
+                        Craft::debug("SyncMissingDaysJob: saved {$ds}.", 'umami-is');
+                    } else {
+                        $failed++;
+                        Craft::warning("SyncMissingDaysJob: DB save failed for {$ds}.", 'umami-is');
+                    }
+
+                    $done++;
+                    $this->setProgress($queue, $done / $total * 0.5);
+                }
+
+                $elapsed = number_format(microtime(true) - $startTime, 2);
+                Craft::info("SyncMissingDaysJob daily pass: synced={$synced}, failed={$failed}, total={$total}, elapsed={$elapsed}s.", 'umami-is');
+            } else {
+                Craft::info('SyncMissingDaysJob: all daily stats already present.', 'umami-is');
+            }
+
+            // — Hourly stats pass —
+            // Always runs so that days present before hourly tracking was added get backfilled.
+            $wantedHourly = $allDates;
+            $existingHourlyDates = HourlyStats::find()
+                ->select(['date'])
+                ->where(['websiteId' => $this->websiteId])
+                ->andWhere(['>=', 'date', $startDateStr])
+                ->distinct()
+                ->column();
+
+            foreach ($existingHourlyDates as $d) {
+                unset($wantedHourly[$d]);
+            }
+
+            if (!empty($wantedHourly)) {
+                $hourlyDaySpecs = [];
+                foreach (array_keys($wantedHourly) as $ds) {
+                    [$hStart, $hEnd] = UmamiTime::dayBounds($ds);
+                    $hourlyDaySpecs[] = ['date' => $ds, 'startAt' => $hStart, 'endAt' => $hEnd];
+                }
+
+                Craft::info('SyncMissingDaysJob: fetching hourly data for ' . \count($hourlyDaySpecs) . ' day(s).', 'umami-is');
+                $hourlyBatch = $plugin->client->getHourlyPageviewsBatch($hourlyDaySpecs);
+
+                $hDone = 0;
+                $hTotal = \count($hourlyDaySpecs);
+                foreach ($hourlyDaySpecs as $hDay) {
+                    $hourlyRows = $hourlyBatch[$hDay['date']] ?? [];
+                    if (!empty($hourlyRows)) {
+                        $plugin->sync->syncHourlyStats($hDay['date'], $hourlyRows);
+                    }
+                    $hDone++;
+                    $this->setProgress($queue, 0.5 + $hDone / $hTotal * 0.5);
+                }
+            } else {
+                Craft::info('SyncMissingDaysJob: all hourly stats already present.', 'umami-is');
             }
 
             $elapsed = number_format(microtime(true) - $startTime, 2);
-            Craft::info("SyncMissingDaysJob done: synced={$synced}, failed={$failed}, total={$total}, elapsed={$elapsed}s.", 'umami-is');
+            Craft::info("SyncMissingDaysJob finished in {$elapsed}s.", 'umami-is');
         } finally {
             $cache->delete($pendingKey);
         }

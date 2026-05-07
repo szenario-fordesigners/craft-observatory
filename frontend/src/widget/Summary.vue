@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
 import CrossFade from '@/shared/CrossFade.vue';
+import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
 
 interface TopMetric {
@@ -26,7 +27,11 @@ interface WidgetSummary {
     referrer: TopMetric | null;
     browser: TopMetric | null;
   };
+  _status?: UmamiStatus;
 }
+
+const hasError = (s: UmamiStatus | undefined): boolean =>
+  !!s && (!s.configured || !s.apiKeyValid);
 
 const props = defineProps<{
   locale?: string;
@@ -38,8 +43,16 @@ const { data } = useWidgetData<WidgetSummary>('umami-is/dashboard/get-widget-sum
 
 const localeId = props.locale || 'en';
 const numberFormatter = new Intl.NumberFormat(localeId);
+const dayFormatter = new Intl.DateTimeFormat(localeId, { weekday: 'short' });
 
 const formatNumber = (n: number) => numberFormatter.format(n);
+
+const formatDay = (dateStr: string): string => {
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return dateStr;
+  const [, y, m, d] = match.map(Number);
+  return dayFormatter.format(new Date(y, m - 1, d));
+};
 
 const maxVisitors = computed(() => {
   if (!data.value || data.value.daily.length === 0) return 0;
@@ -56,6 +69,9 @@ const barHeightFor = (i: number): string => {
 
 <template>
   <WidgetFrame>
+    <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
+
+    <template v-else>
     <div class="umami-summary__head">
       <div class="umami-summary__col umami-summary__col--visitors">
         <div class="umami-summary__header">visitors</div>
@@ -134,6 +150,14 @@ const barHeightFor = (i: number): string => {
 
     <div class="umami-summary__bars">
       <div v-for="i in 7" :key="i - 1" class="umami-summary__bar-cell">
+        <div class="umami-summary__bar-value">
+          <CrossFade>
+            <span v-if="data" :key="`val-${i - 1}`">
+              {{ data.daily[i - 1] ? formatNumber(data.daily[i - 1].visitors) : '' }}
+            </span>
+            <SkeletonText v-else :key="`val-skel-${i - 1}`" variant="narrow" />
+          </CrossFade>
+        </div>
         <div
           class="umami-summary__bar"
           :class="{ 'umami-summary__bar--skeleton': !data }"
@@ -149,8 +173,8 @@ const barHeightFor = (i: number): string => {
       <div v-for="i in 7" :key="i - 1" class="umami-summary__label-cell">
         <CrossFade>
           <div v-if="data" :key="`real-${i - 1}`" class="umami-summary__label-content">
-            <div class="umami-summary__count">
-              {{ data.daily[i - 1] ? formatNumber(data.daily[i - 1].visitors) : '' }}
+            <div class="umami-summary__day">
+              {{ data.daily[i - 1] ? formatDay(data.daily[i - 1].date) : '' }}
             </div>
           </div>
           <div v-else :key="`skel-${i - 1}`" class="umami-summary__label-content">
@@ -159,6 +183,7 @@ const barHeightFor = (i: number): string => {
         </CrossFade>
       </div>
     </div>
+    </template>
   </WidgetFrame>
 </template>
 
@@ -235,9 +260,25 @@ const barHeightFor = (i: number): string => {
 
 .umami-summary__bar-cell {
   display: flex;
-  justify-content: center;
-  align-items: end;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
   height: 100%;
+  gap: 3px;
+}
+
+.umami-summary__bar-value {
+  font-size: 0.65rem;
+  line-height: 1;
+  opacity: 0.6;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.umami-summary__bar-value > :deep(*) {
+  grid-area: 1 / 1;
+  min-width: 0;
+  text-align: center;
 }
 
 .umami-summary__bar {
@@ -289,8 +330,9 @@ const barHeightFor = (i: number): string => {
   flex-direction: column;
 }
 
-.umami-summary__count {
+.umami-summary__day {
   text-align: center;
+  opacity: 0.55;
 }
 
 @media (prefers-reduced-motion: reduce) {

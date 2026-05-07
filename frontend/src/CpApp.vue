@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import LineChart from '@/components/LineChart.vue';
 import DateRangeSelector from '@/components/DateRangeSelector.vue';
+import HeatmapChart from '@/components/HeatmapChart.vue';
 import MetricList from '@/components/MetricList.vue';
 import StatsOverview from '@/components/StatsOverview.vue';
+import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
 import { useDateRange, type RangeValue } from '@/composables/useDateRange';
 import type { WebsitePageviews, WebsiteMetric, WebsiteStats } from '@umami/api-client';
-import { ref, onUnmounted, watch } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 
 const props = defineProps<{
   title?: string;
@@ -29,10 +31,22 @@ const locTab = ref<'country' | 'region' | 'city'>('country');
 const metricsData = ref<Record<string, WebsiteMetric[]>>({});
 const metricsLoading = ref(false);
 
+const dashboardStatus = ref<UmamiStatus | null>(null);
+const heatmapStatus = ref<UmamiStatus | null>(null);
+
+// Show whichever status surfaced an error (dashboard fires first; heatmap is independent).
+const status = computed<UmamiStatus | null>(() => {
+  for (const s of [dashboardStatus.value, heatmapStatus.value]) {
+    if (s && (!s.configured || !s.apiKeyValid)) return s;
+  }
+  return dashboardStatus.value ?? heatmapStatus.value;
+});
+
 interface DashboardDataResponse {
   pageviews?: WebsitePageviews | null;
   stats?: WebsiteStats | null;
   metrics?: Record<string, WebsiteMetric[]>;
+  _status?: UmamiStatus;
 }
 
 let dashboardAbortController: AbortController | null = null;
@@ -76,6 +90,7 @@ const fetchDashboardData = async (includePageviews = true) => {
 
       statsData.value = data.stats ?? null;
       metricsData.value = data.metrics ?? {};
+      dashboardStatus.value = data._status ?? null;
     }
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') {
@@ -99,6 +114,35 @@ onUnmounted(() => {
   dashboardAbortController?.abort();
 });
 
+interface HeatmapData {
+  cells: { weekday: number; hour: number; visitors: number }[];
+  maxVisitors: number;
+  daysWithData: number;
+  _status?: UmamiStatus;
+}
+
+const heatmapData = ref<HeatmapData | null>(null);
+const heatmapLoading = ref(false);
+
+const fetchHeatmapData = async () => {
+  heatmapLoading.value = true;
+  try {
+    const url = window.Craft.getActionUrl('umami-is/dashboard/get-heatmap-data');
+    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (response.ok) {
+      const json = (await response.json()) as HeatmapData;
+      heatmapData.value = json;
+      heatmapStatus.value = json._status ?? null;
+    }
+  } catch (e) {
+    console.error('Error fetching heatmap data', e);
+  } finally {
+    heatmapLoading.value = false;
+  }
+};
+
+onMounted(fetchHeatmapData);
+
 watch(
   () => [currentRange.value.startAt, currentRange.value.endAt, currentRange.value.unit] as const,
   (_newVal, oldVal) => {
@@ -110,6 +154,8 @@ watch(
 
 <template>
   <div id="umami-is-wrapper" class="rounded-lg border border-gray-200 bg-white p-6">
+    <StatusNotice :status="status" variant="cp" />
+
     <div class="mb-6 flex items-center justify-between">
       <h1 class="m-0 text-xl font-bold text-gray-800">{{ title }}</h1>
       <DateRangeSelector
@@ -130,6 +176,17 @@ watch(
       <div v-else class="flex h-48 items-center justify-center text-gray-400">Loading data...</div>
     </div>
 
+    <!-- Heatmap: traffic by hour of day -->
+    <div class="mb-8 rounded border border-gray-100 bg-gray-50 p-4">
+      <h2 class="mb-3 text-sm font-semibold text-gray-700">Traffic by hour of day</h2>
+      <HeatmapChart
+        :cells="heatmapData?.cells ?? []"
+        :max-visitors="heatmapData?.maxVisitors ?? 0"
+        :days-with-data="heatmapData?.daysWithData ?? 0"
+        :loading="heatmapLoading"
+      />
+    </div>
+
     <!-- Grid Layout for Metrics -->
     <div class="grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
       <!-- Left Column: Pages & Sources -->
@@ -142,7 +199,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 pageTab === 'url'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -153,7 +210,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 pageTab === 'entry'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -164,7 +221,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 pageTab === 'exit'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -182,7 +239,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 sourceTab === 'referrer'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -193,7 +250,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 sourceTab === 'channel'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -214,7 +271,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 envTab === 'browser'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -225,7 +282,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 envTab === 'os'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -236,7 +293,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 envTab === 'device'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -254,7 +311,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 locTab === 'country'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -265,7 +322,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 locTab === 'region'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >
@@ -276,7 +333,7 @@ watch(
               :class="[
                 'flex-1 text-center text-sm font-semibold',
                 locTab === 'city'
-                  ? '-mb-[10px] border-b-2 border-gray-900 text-gray-900'
+                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
                   : 'text-gray-500 hover:text-gray-700',
               ]"
             >

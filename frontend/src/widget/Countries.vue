@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
+import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
 
 const props = defineProps<{
@@ -14,7 +15,15 @@ interface MetricEntry {
   y: number;
 }
 
-const { data, loading, error } = useWidgetData<MetricEntry[]>('umami-is/dashboard/get-metrics?type=country');
+interface MetricsResponse {
+  data: MetricEntry[];
+  _status?: UmamiStatus;
+}
+
+const hasError = (s: UmamiStatus | undefined): boolean =>
+  !!s && (!s.configured || !s.apiKeyValid);
+
+const { data, loading, error } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?type=country');
 
 const regionNames = new Intl.DisplayNames([props.locale || 'en'], { type: 'region' });
 
@@ -34,14 +43,13 @@ const getFlagUrl = (code: string) => {
 
 // Limit the number of countries to display so it doesn't get too long
 const displayedCountries = computed(() => {
-  if (!data.value) return [];
-  // Sort by visitors descending just in case, and take top 5
-  return [...data.value].sort((a, b) => b.y - a.y).slice(0, 5);
+  if (!data.value?.data) return [];
+  return [...data.value.data].sort((a, b) => b.y - a.y).slice(0, 5);
 });
 
 // Provide a unified list of either real items or fake items for skeleton loading
 const listItems = computed(() => {
-  if (loading.value && (!data.value || data.value.length === 0)) {
+  if (loading.value && (!data.value?.data || data.value.data.length === 0)) {
     return Array.from({ length: 5 }).map((_, i) => ({
       x: `skel-${i}`,
       y: 0,
@@ -54,10 +62,9 @@ const listItems = computed(() => {
   }));
 });
 
-// Calculate max visitors to scale background bars
 const maxVisitors = computed(() => {
-  if (!data.value || data.value.length === 0) return 0;
-  return Math.max(0, ...data.value.map((d) => d.y));
+  if (!data.value?.data || data.value.data.length === 0) return 0;
+  return Math.max(0, ...data.value.data.map((d) => d.y));
 });
 
 // Stagger delays for a nice cascade effect
@@ -66,6 +73,9 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
 
 <template>
   <WidgetFrame>
+    <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
+
+    <template v-else>
     <div class="umami-countries__head">
       <div class="umami-countries__col">
         <div class="umami-countries__header">top countries</div>
@@ -114,7 +124,7 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
                   class="umami-countries__favicon" 
                   alt="" 
                   loading="lazy" 
-                  @error="$event.target.style.display='none'"
+                  @error="($event.target as HTMLImageElement).style.display='none'"
                 />
                 <div 
                   v-else 
@@ -147,6 +157,7 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
         </div>
       </div>
     </div>
+    </template>
   </WidgetFrame>
 </template>
 

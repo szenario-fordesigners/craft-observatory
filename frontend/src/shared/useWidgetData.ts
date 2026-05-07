@@ -7,7 +7,10 @@ export interface UseWidgetData<T> {
   refetch: () => Promise<void>;
 }
 
-export function useWidgetData<T>(actionPath: string): UseWidgetData<T> {
+export function useWidgetData<T>(
+  actionPath: string,
+  params?: Record<string, string | number>,
+): UseWidgetData<T> {
   const data = ref<T | null>(null) as Ref<T | null>;
   const loading = ref(false);
   const error = ref<Error | null>(null) as Ref<Error | null>;
@@ -19,7 +22,15 @@ export function useWidgetData<T>(actionPath: string): UseWidgetData<T> {
     loading.value = true;
     error.value = null;
     try {
-      const url = window.Craft.getActionUrl(actionPath);
+      const base = window.Craft.getActionUrl(actionPath);
+      let url = base;
+      if (params && Object.keys(params).length > 0) {
+        const sep = base.includes('?') ? '&' : '?';
+        const qs = Object.entries(params)
+          .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+          .join('&');
+        url = `${base}${sep}${qs}`;
+      }
       const res = await fetch(url, {
         headers: { Accept: 'application/json' },
         signal: abortController.signal,

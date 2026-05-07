@@ -6,6 +6,7 @@ use craft\base\Component;
 use craft\helpers\App;
 use szenario\craftumamiis\helpers\UmamiTime;
 use szenario\craftumamiis\records\DailyStats;
+use szenario\craftumamiis\records\HourlyStats;
 use szenario\craftumamiis\UmamiIs;
 
 /**
@@ -125,6 +126,72 @@ class StatsReport extends Component
         $pct = (int) round((($current - $prior) / $prior) * 100);
         $dir = $current === $prior ? 0 : ($current > $prior ? 1 : -1);
         return [$pct, $dir];
+    }
+
+    /**
+     * Aggregates hourly visitor data from the local DB into a 7×24 heatmap grid.
+     *
+     * Returns one cell per observed (weekday, hour) combination over the lookback window.
+     * weekday: 0=Monday … 6=Sunday. Visitors value is the average across all matching days.
+     *
+     * @return array{cells:array<int,array{weekday:int,hour:int,visitors:float}>,maxVisitors:float,daysWithData:int}
+     */
+    public function getHeatmapData(int $lookbackDays = 90): array
+    {
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+
+        $empty = ['cells' => [], 'maxVisitors' => 0.0, 'daysWithData' => 0];
+
+        if (empty($websiteId)) {
+            return $empty;
+        }
+
+        $startDate = UmamiTime::dateOffset($lookbackDays);
+
+        /** @var HourlyStats[] $rows */
+        $rows = HourlyStats::find()
+            ->where(['websiteId' => $websiteId])
+            ->andWhere(['>=', 'date', $startDate])
+            ->all();
+
+        if (empty($rows)) {
+            return $empty;
+        }
+
+        // Aggregate: sum visitors and count occurrences per (weekday, hour) cell.
+        $aggregates = [];
+        $uniqueDates = [];
+        foreach ($rows as $row) {
+            $dt = new \DateTimeImmutable($row->date);
+            // DateTimeImmutable::format('N') → 1=Mon … 7=Sun; subtract 1 for 0-based Mon=0.
+            $weekday = (int) $dt->format('N') - 1;
+            $hour = (int) $row->hour;
+            $key = "{$weekday}:{$hour}";
+
+            if (!isset($aggregates[$key])) {
+                $aggregates[$key] = ['weekday' => $weekday, 'hour' => $hour, 'sum' => 0, 'count' => 0];
+            }
+            $aggregates[$key]['sum'] += $row->visitors;
+            $aggregates[$key]['count']++;
+            $uniqueDates[$row->date] = true;
+        }
+
+        $cells = [];
+        $maxVisitors = 0.0;
+        foreach ($aggregates as $agg) {
+            $avg = $agg['count'] > 0 ? round($agg['sum'] / $agg['count'], 1) : 0.0;
+            $cells[] = ['weekday' => $agg['weekday'], 'hour' => $agg['hour'], 'visitors' => $avg];
+            if ($avg > $maxVisitors) {
+                $maxVisitors = $avg;
+            }
+        }
+
+        return [
+            'cells' => $cells,
+            'maxVisitors' => $maxVisitors,
+            'daysWithData' => \count($uniqueDates),
+        ];
     }
 
     /**

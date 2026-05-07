@@ -7,6 +7,7 @@ use craft\base\Component;
 use craft\helpers\App;
 use szenario\craftumamiis\jobs\SyncMissingDaysJob;
 use szenario\craftumamiis\records\DailyStats;
+use szenario\craftumamiis\records\HourlyStats;
 use szenario\craftumamiis\UmamiIs;
 
 /**
@@ -37,22 +38,28 @@ class SyncCoordinator extends Component
             return false;
         }
 
-        $cache = Craft::$app->getCache();
-        $lastAttemptKey = "umami_autosync_last_attempt_{$websiteId}";
-        if ($cache->get($lastAttemptKey) !== false) {
-            Craft::debug("autoSyncMissingDays throttled: a sync was attempted within the last {$throttleSeconds}s.", 'umami-is');
-            return false;
-        }
-
         $lastUpdatedStr = DailyStats::find()
             ->where(['websiteId' => $websiteId])
             ->max('dateUpdated');
 
-        if ($lastUpdatedStr !== null && time() - strtotime($lastUpdatedStr) < $throttleSeconds) {
-            $age = time() - strtotime($lastUpdatedStr);
-            Craft::debug("autoSyncMissingDays throttled: last sync {$age}s ago (window {$throttleSeconds}s).", 'umami-is');
-            return false;
+        $isFirstRun = $lastUpdatedStr === null;
+
+        if (!$isFirstRun) {
+            $cache = Craft::$app->getCache();
+            $lastAttemptKey = "umami_autosync_last_attempt_{$websiteId}";
+            if ($cache->get($lastAttemptKey) !== false) {
+                Craft::debug("autoSyncMissingDays throttled: a sync was attempted within the last {$throttleSeconds}s.", 'umami-is');
+                return false;
+            }
+
+            if (time() - strtotime($lastUpdatedStr) < $throttleSeconds) {
+                $age = time() - strtotime($lastUpdatedStr);
+                Craft::debug("autoSyncMissingDays throttled: last sync {$age}s ago (window {$throttleSeconds}s).", 'umami-is');
+                return false;
+            }
         }
+
+        $cache = Craft::$app->getCache();
 
         // Dedupe pending jobs across rapid concurrent renders. The job itself clears this key on completion.
         $pendingKey = "umami_autosync_pending_{$websiteId}";
@@ -61,7 +68,9 @@ class SyncCoordinator extends Component
             return false;
         }
 
-        $cache->set($lastAttemptKey, 1, $throttleSeconds);
+        if (!$isFirstRun) {
+            $cache->set("umami_autosync_last_attempt_{$websiteId}", 1, $throttleSeconds);
+        }
 
         Craft::$app->getQueue()->push(new SyncMissingDaysJob([
             'websiteId' => $websiteId,
@@ -113,6 +122,53 @@ class SyncCoordinator extends Component
         if (!$record->save()) {
             Craft::error("Failed to save daily stats for {$date}: " . json_encode($record->getErrors()), __METHOD__);
             return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Upserts hourly visitor/pageview rows for a single date.
+     *
+     * @param string $date Date in 'Y-m-d' format.
+     * @param array<int,array{hour:int,visitors:int,pageviews:int}> $hourlyRows
+     */
+    public function syncHourlyStats(string $date, array $hourlyRows): bool
+    {
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+
+        if (empty($websiteId)) {
+            Craft::error('Cannot sync hourly stats without an Umami Website ID.', __METHOD__);
+            return false;
+        }
+
+        foreach ($hourlyRows as $row) {
+            $hour = (int) $row['hour'];
+
+            $record = HourlyStats::findOne([
+                'websiteId' => $websiteId,
+                'date' => $date,
+                'hour' => $hour,
+            ]);
+
+            if (!$record) {
+                $record = new HourlyStats();
+                $record->websiteId = $websiteId;
+                $record->date = $date;
+                $record->hour = $hour;
+            }
+
+            $record->visitors = (int) $row['visitors'];
+            $record->pageviews = (int) $row['pageviews'];
+
+            if (!$record->save()) {
+                Craft::error(
+                    "Failed to save hourly stats for {$date} hour {$hour}: " . json_encode($record->getErrors()),
+                    __METHOD__
+                );
+                return false;
+            }
         }
 
         return true;

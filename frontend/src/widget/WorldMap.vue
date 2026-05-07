@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import CrossFade from '@/shared/CrossFade.vue';
+import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
 import { VisSingleContainer, VisTopoJSONMap, VisTooltip } from '@unovis/vue';
 import { WorldMapTopoJSON } from '@unovis/ts/maps';
@@ -10,6 +11,11 @@ import { TopoJSONMap } from '@unovis/ts';
 interface MetricEntry {
   x: string;
   y: number;
+}
+
+interface MetricsResponse {
+  data: MetricEntry[];
+  _status?: UmamiStatus;
 }
 
 interface MapArea {
@@ -21,16 +27,19 @@ const props = defineProps<{
   locale?: string;
 }>();
 
-const { data } = useWidgetData<MetricEntry[]>('umami-is/dashboard/get-metrics?type=country');
+const hasError = (s: UmamiStatus | undefined): boolean =>
+  !!s && (!s.configured || !s.apiKeyValid);
+
+const { data } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?type=country');
 
 const maxVisitors = computed(() => {
-  if (!data.value || data.value.length === 0) return 0;
-  return Math.max(0, ...data.value.map((d) => d.y));
+  if (!data.value?.data || data.value.data.length === 0) return 0;
+  return Math.max(0, ...data.value.data.map((d) => d.y));
 });
 
 const mapData = computed((): MapArea[] => {
   const geometries = (WorldMapTopoJSON as any).objects?.countries?.geometries || [];
-  const metrics = data.value || [];
+  const metrics = data.value?.data || [];
   return geometries.map((geo: any) => {
     const metric = metrics.find((m) => m.x === geo.id);
     return { id: geo.id as string, y: metric ? metric.y : 0 };
@@ -56,7 +65,7 @@ const tooltipTriggers = {
     if (code) {
       try { name = regionNames.of(code) || code; } catch { name = code; }
     }
-    const visitors = (data.value || []).find(m => m.x === code)?.y ?? 0;
+    const visitors = (data.value?.data || []).find(m => m.x === code)?.y ?? 0;
     return `${name}: ${visitors} visitors`;
   },
 };
@@ -82,6 +91,9 @@ onBeforeUnmount(() => {
 
 <template>
   <WidgetFrame>
+    <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
+
+    <template v-else>
     <div class="umami-world-map__head">
       <div class="umami-world-map__col">
         <div class="umami-world-map__header">visitors by country</div>
@@ -110,6 +122,7 @@ onBeforeUnmount(() => {
         </div>
       </CrossFade>
     </div>
+    </template>
   </WidgetFrame>
 </template>
 
