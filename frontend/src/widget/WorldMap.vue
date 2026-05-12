@@ -116,6 +116,7 @@ onBeforeUnmount(() => {
               :topojson="WorldMapTopoJSON"
               :areaId="areaId"
               :areaColor="areaColor"
+              mapFeatureDefaultColor="color-mix(in srgb, var(--umami-fg) 10%, transparent)"
               :strokeWidth="0.5"
               strokeColor="var(--umami-bg)"
             />
@@ -132,6 +133,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.umami-world-map__map-container {
+  --vis-map-feature-color: color-mix(in srgb, var(--umami-fg) 10%, transparent);
+}
+
 .umami-world-map__head {
   display: flex;
   justify-content: space-between;
