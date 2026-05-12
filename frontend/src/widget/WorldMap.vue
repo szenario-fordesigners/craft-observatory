@@ -23,17 +23,18 @@ interface MapArea {
   y: number;
 }
 
-interface TopoJSONGeometry { id: string }
+interface TopoJSONGeometry {
+  id: string;
+}
 interface TopoJSONTopology {
-  objects?: { countries?: { geometries?: TopoJSONGeometry[] } }
+  objects?: { countries?: { geometries?: TopoJSONGeometry[] } };
 }
 
 const props = defineProps<{
   locale?: string;
 }>();
 
-const hasError = (s: UmamiStatus | undefined): boolean =>
-  !!s && (!s.configured || !s.apiKeyValid);
+const hasError = (s: UmamiStatus | undefined): boolean => !!s && (!s.configured || !s.apiKeyValid);
 
 const { data } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?type=country');
 
@@ -61,16 +62,13 @@ const areaColor = (d: MapArea | undefined) => {
   return `color-mix(in srgb, var(--umami-fg) ${Math.round(ratio * 100)}%, transparent)`;
 };
 
-const regionNames = new Intl.DisplayNames([props.locale || 'en'], { type: 'region' });
+import { resolveCountryName } from '@/shared/resolveCountryName';
 
 const tooltipTriggers = {
   [TopoJSONMap.selectors.feature]: (d: { id?: string }) => {
     const code = d?.id;
-    let name = code || 'Unknown';
-    if (code) {
-      try { name = regionNames.of(code) || code; } catch { name = code; }
-    }
-    const visitors = (data.value?.data || []).find(m => m.x === code)?.y ?? 0;
+    const name = resolveCountryName(code, props.locale, 'Unknown');
+    const visitors = (data.value?.data || []).find((m) => m.x === code)?.y ?? 0;
     return `${name}: ${visitors} visitors`;
   },
 };
@@ -82,7 +80,7 @@ let resizeObserver: ResizeObserver | null = null;
 
 onMounted(() => {
   if (!mapContainerRef.value) return;
-  resizeObserver = new ResizeObserver(entries => {
+  resizeObserver = new ResizeObserver((entries) => {
     containerWidth.value = entries[0]?.contentRect.width ?? 0;
   });
   resizeObserver.observe(mapContainerRef.value);
@@ -99,35 +97,35 @@ onBeforeUnmount(() => {
     <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
 
     <template v-else>
-    <div class="umami-world-map__head">
-      <div class="umami-world-map__col">
-        <div class="umami-world-map__header">visitors by country</div>
-        <div class="umami-world-map__subheader">last 7 days</div>
+      <div class="umami-world-map__head">
+        <div class="umami-world-map__col">
+          <div class="umami-world-map__header">visitors by country</div>
+          <div class="umami-world-map__subheader">last 7 days</div>
+        </div>
       </div>
-    </div>
 
-    <hr class="umami-widget__divider" />
+      <hr class="umami-widget__divider" />
 
-    <div ref="mapContainerRef" class="umami-world-map__map-container">
-      <CrossFade>
-        <div v-if="data" key="real-map" class="umami-world-map__map-inner">
-          <VisSingleContainer :data="{ areas: mapData }" :width="containerWidth || undefined">
-            <VisTopoJSONMap
-              :topojson="WorldMapTopoJSON"
-              :areaId="areaId"
-              :areaColor="areaColor"
-              mapFeatureDefaultColor="color-mix(in srgb, var(--umami-fg) 10%, transparent)"
-              :strokeWidth="0.5"
-              strokeColor="var(--umami-bg)"
-            />
-            <VisTooltip :triggers="tooltipTriggers" />
-          </VisSingleContainer>
-        </div>
-        <div v-else key="skeleton-map" class="umami-world-map__skeleton">
-           <div class="umami-world-map__skeleton-inner"></div>
-        </div>
-      </CrossFade>
-    </div>
+      <div ref="mapContainerRef" class="umami-world-map__map-container">
+        <CrossFade>
+          <div v-if="data" key="real-map" class="umami-world-map__map-inner">
+            <VisSingleContainer :data="{ areas: mapData }" :width="containerWidth || undefined">
+              <VisTopoJSONMap
+                :topojson="WorldMapTopoJSON"
+                :areaId="areaId"
+                :areaColor="areaColor"
+                mapFeatureDefaultColor="color-mix(in srgb, var(--umami-fg) 10%, transparent)"
+                :strokeWidth="0.5"
+                strokeColor="var(--umami-bg)"
+              />
+              <VisTooltip :triggers="tooltipTriggers" />
+            </VisSingleContainer>
+          </div>
+          <div v-else key="skeleton-map" class="umami-world-map__skeleton">
+            <div class="umami-world-map__skeleton-inner"></div>
+          </div>
+        </CrossFade>
+      </div>
     </template>
   </WidgetFrame>
 </template>

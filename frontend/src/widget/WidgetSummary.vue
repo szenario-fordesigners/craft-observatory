@@ -32,8 +32,7 @@ interface WidgetSummary {
   _syncing?: boolean;
 }
 
-const hasError = (s: UmamiStatus | undefined): boolean =>
-  !!s && (!s.configured || !s.apiKeyValid);
+const hasError = (s: UmamiStatus | undefined): boolean => !!s && (!s.configured || !s.apiKeyValid);
 
 const props = defineProps<{
   locale?: string;
@@ -72,6 +71,13 @@ const localeId = props.locale || 'en';
 const numberFormatter = new Intl.NumberFormat(localeId);
 const dayFormatter = new Intl.DateTimeFormat(localeId, { weekday: 'short' });
 
+import { resolveCountryName } from '@/shared/resolveCountryName';
+
+const topCountry = computed(() => {
+  const code = ready.value?.top.country?.x;
+  return resolveCountryName(code, localeId, '—');
+});
+
 const formatNumber = (n: number) => numberFormatter.format(n);
 
 const formatDay = (dateStr: string): string => {
@@ -99,123 +105,125 @@ const barHeightFor = (i: number): string => {
     <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
 
     <template v-else>
-    <div class="umami-summary__head">
-      <div class="umami-summary__col umami-summary__col--visitors">
-        <div class="umami-summary__header">visitors</div>
-        <svg
-          v-if="!ready || ready.deltaDirection > 0"
-          class="umami-summary__arrow"
-          viewBox="17 45 56 47"
-          fill="currentColor"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M47.572 45.928C46.1515 44.5075 43.8485 44.5075 42.428 45.928L19.2796 69.0763C17.8591 70.4968 17.8591 72.7999 19.2796 74.2204C20.7001 75.6409 23.0032 75.6409 24.4237 74.2204L45 53.6441L65.5763 74.2204C66.9968 75.6409 69.2999 75.6409 70.7204 74.2204C72.1409 72.7999 72.1409 70.4968 70.7204 69.0763L47.572 45.928ZM45 91.5L48.6374 91.5L48.6374 48.5L45 48.5L41.3626 48.5L41.3626 91.5L45 91.5Z"
-          />
-        </svg>
-        <svg
-          v-else-if="ready.deltaDirection < 0"
-          class="umami-summary__arrow umami-summary__arrow--down"
-          viewBox="17 45 56 47"
-          fill="currentColor"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M47.572 45.928C46.1515 44.5075 43.8485 44.5075 42.428 45.928L19.2796 69.0763C17.8591 70.4968 17.8591 72.7999 19.2796 74.2204C20.7001 75.6409 23.0032 75.6409 24.4237 74.2204L45 53.6441L65.5763 74.2204C66.9968 75.6409 69.2999 75.6409 70.7204 74.2204C72.1409 72.7999 72.1409 70.4968 70.7204 69.0763L47.572 45.928ZM45 91.5L48.6374 91.5L48.6374 48.5L45 48.5L41.3626 48.5L41.3626 91.5L45 91.5Z"
-          />
-        </svg>
-        <svg
-          v-else
-          class="umami-summary__arrow"
-          viewBox="17 45 56 47"
-          fill="currentColor"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <rect x="22" y="65" width="46" height="7" rx="3.5" />
-        </svg>
-      </div>
-
-      <div class="umami-summary__col umami-summary__col--total">
-        <div class="umami-summary__header">last 7 days</div>
-        <div class="umami-summary__total-count">
-          <CrossFade>
-            <span v-if="ready" key="total-real">{{ formatNumber(ready.totalVisitors) }}</span>
-            <SkeletonText v-else key="total-skel" variant="total" />
-          </CrossFade>
+      <div class="umami-summary__head">
+        <div class="umami-summary__col umami-summary__col--visitors">
+          <div class="umami-summary__header">visitors</div>
+          <svg
+            v-if="!ready || ready.deltaDirection > 0"
+            class="umami-summary__arrow"
+            viewBox="17 45 56 47"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M47.572 45.928C46.1515 44.5075 43.8485 44.5075 42.428 45.928L19.2796 69.0763C17.8591 70.4968 17.8591 72.7999 19.2796 74.2204C20.7001 75.6409 23.0032 75.6409 24.4237 74.2204L45 53.6441L65.5763 74.2204C66.9968 75.6409 69.2999 75.6409 70.7204 74.2204C72.1409 72.7999 72.1409 70.4968 70.7204 69.0763L47.572 45.928ZM45 91.5L48.6374 91.5L48.6374 48.5L45 48.5L41.3626 48.5L41.3626 91.5L45 91.5Z"
+            />
+          </svg>
+          <svg
+            v-else-if="ready.deltaDirection < 0"
+            class="umami-summary__arrow umami-summary__arrow--down"
+            viewBox="17 45 56 47"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M47.572 45.928C46.1515 44.5075 43.8485 44.5075 42.428 45.928L19.2796 69.0763C17.8591 70.4968 17.8591 72.7999 19.2796 74.2204C20.7001 75.6409 23.0032 75.6409 24.4237 74.2204L45 53.6441L65.5763 74.2204C66.9968 75.6409 69.2999 75.6409 70.7204 74.2204C72.1409 72.7999 72.1409 70.4968 70.7204 69.0763L47.572 45.928ZM45 91.5L48.6374 91.5L48.6374 48.5L45 48.5L41.3626 48.5L41.3626 91.5L45 91.5Z"
+            />
+          </svg>
+          <svg
+            v-else
+            class="umami-summary__arrow"
+            viewBox="17 45 56 47"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <rect x="22" y="65" width="46" height="7" rx="3.5" />
+          </svg>
         </div>
-      </div>
 
-      <div class="umami-summary__col umami-summary__col--top">
-        <div class="umami-summary__header">top</div>
-        <div class="umami-summary__top-grid">
-          <div>country</div>
-          <div class="umami-summary__top-value">
+        <div class="umami-summary__col umami-summary__col--total">
+          <div class="umami-summary__header">last 7 days</div>
+          <div class="umami-summary__total-count">
             <CrossFade>
-              <span v-if="ready" key="country-real">{{ ready.top.country?.x ?? '—' }}</span>
-              <SkeletonText v-else key="country-skel" />
-            </CrossFade>
-          </div>
-          <div>referrers</div>
-          <div class="umami-summary__top-value">
-            <CrossFade>
-              <span v-if="ready" key="ref-real">{{ ready.top.referrer?.x ?? '—' }}</span>
-              <SkeletonText v-else key="ref-skel" />
-            </CrossFade>
-          </div>
-          <div>browser</div>
-          <div class="umami-summary__top-value">
-            <CrossFade>
-              <span v-if="ready" key="br-real">{{ ready.top.browser?.x ?? '—' }}</span>
-              <SkeletonText v-else key="br-skel" />
+              <span v-if="ready" key="total-real">{{ formatNumber(ready.totalVisitors) }}</span>
+              <SkeletonText v-else key="total-skel" variant="total" />
             </CrossFade>
           </div>
         </div>
-      </div>
-    </div>
 
-    <hr class="umami-widget__divider" />
-
-    <div class="umami-summary__bars">
-      <div v-for="i in 7" :key="i - 1" class="umami-summary__bar-cell">
-        <div class="umami-summary__bar-value">
-          <CrossFade>
-            <span v-if="ready" :key="`val-${i - 1}`">
-              {{ ready.daily[i - 1] ? formatNumber(ready.daily[i - 1].visitors) : '' }}
-            </span>
-            <SkeletonText v-else :key="`val-skel-${i - 1}`" variant="narrow" />
-          </CrossFade>
-        </div>
-        <div
-          class="umami-summary__bar"
-          :class="{ 'umami-summary__bar--skeleton': !ready }"
-          :style="{
-            height: barHeightFor(i - 1),
-            animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined,
-          }"
-        ></div>
-      </div>
-    </div>
-
-    <div class="umami-summary__labels">
-      <div v-for="i in 7" :key="i - 1" class="umami-summary__label-cell">
-        <CrossFade>
-          <div v-if="ready" :key="`real-${i - 1}`" class="umami-summary__label-content">
-            <div class="umami-summary__day">
-              {{ ready.daily[i - 1] ? formatDay(ready.daily[i - 1].date) : '' }}
+        <div class="umami-summary__col umami-summary__col--top">
+          <div class="umami-summary__header">top</div>
+          <div class="umami-summary__top-grid">
+            <div>country</div>
+            <div class="umami-summary__top-value">
+              <CrossFade>
+                <span v-if="ready" key="country-real">{{ topCountry }}</span>
+                <SkeletonText v-else key="country-skel" />
+              </CrossFade>
+            </div>
+            <div>referrers</div>
+            <div class="umami-summary__top-value">
+              <CrossFade>
+                <span v-if="ready" key="ref-real">{{ ready.top.referrer?.x ?? '—' }}</span>
+                <SkeletonText v-else key="ref-skel" />
+              </CrossFade>
+            </div>
+            <div>browser</div>
+            <div class="umami-summary__top-value">
+              <CrossFade>
+                <span v-if="ready" key="br-real">{{ ready.top.browser?.x ?? '—' }}</span>
+                <SkeletonText v-else key="br-skel" />
+              </CrossFade>
             </div>
           </div>
-          <div v-else :key="`skel-${i - 1}`" class="umami-summary__label-content">
-            <SkeletonText variant="narrow" />
-          </div>
-        </CrossFade>
+        </div>
       </div>
-    </div>
 
+      <hr class="umami-widget__divider" />
+
+      <div class="umami-summary__bars">
+        <div v-for="i in 7" :key="i - 1" class="umami-summary__bar-cell">
+          <div class="umami-summary__bar-value">
+            <CrossFade>
+              <span v-if="ready" :key="`val-${i - 1}`">
+                {{ ready.daily[i - 1] ? formatNumber(ready.daily[i - 1].visitors) : '' }}
+              </span>
+              <SkeletonText v-else :key="`val-skel-${i - 1}`" variant="narrow" />
+            </CrossFade>
+          </div>
+          <div
+            class="umami-summary__bar"
+            :class="{ 'umami-summary__bar--skeleton': !ready }"
+            :style="{
+              height: barHeightFor(i - 1),
+              animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined,
+            }"
+          ></div>
+        </div>
+      </div>
+
+      <div class="umami-summary__labels">
+        <div v-for="i in 7" :key="i - 1" class="umami-summary__label-cell">
+          <CrossFade>
+            <div v-if="ready" :key="`real-${i - 1}`" class="umami-summary__label-content">
+              <div class="umami-summary__day">
+                {{ ready.daily[i - 1] ? formatDay(ready.daily[i - 1].date) : '' }}
+              </div>
+            </div>
+            <div v-else :key="`skel-${i - 1}`" class="umami-summary__label-content">
+              <SkeletonText variant="narrow" />
+            </div>
+          </CrossFade>
+        </div>
+      </div>
     </template>
 
     <template #footer>
       <div class="umami-widget__footer umami-summary__footer">
-        <span class="umami-summary__syncing" :class="{ 'umami-summary__syncing--hidden': !data?._syncing }">
+        <span
+          class="umami-summary__syncing"
+          :class="{ 'umami-summary__syncing--hidden': !data?._syncing }"
+        >
           syncing historical data…
         </span>
         <span>powered by Umami</span>

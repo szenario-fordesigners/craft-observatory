@@ -25,16 +25,9 @@ const hasError = (s: UmamiStatus | undefined): boolean =>
 
 const { data, loading, error } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?type=country');
 
-const regionNames = new Intl.DisplayNames([props.locale || 'en'], { type: 'region' });
+import { resolveCountryName } from '@/shared/resolveCountryName';
 
-const getCountryName = (code: string) => {
-  if (code === 'Unknown') return code;
-  try {
-    return regionNames.of(code) || code;
-  } catch {
-    return code;
-  }
-};
+const getCountryName = (code: string) => resolveCountryName(code, props.locale, '—');
 
 const getFlagUrl = (code: string) => {
   if (!code || code === 'Unknown') return ''; // Or a fallback generic icon if you have one
