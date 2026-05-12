@@ -1,8 +1,25 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+interface SiteStats {
+  visitors?: number
+  unique?: number
+  visits?: number
+  pageviews?: number
+  bounces?: number
+  totaltime?: number
+  comparison?: {
+    visitors?: number
+    unique?: number
+    visits?: number
+    pageviews?: number
+    bounces?: number
+    totaltime?: number
+  }
+}
+
 const props = defineProps<{
-  stats: any | null,
+  stats: SiteStats | null,
   loading: boolean
 }>()
 

@@ -23,6 +23,11 @@ interface MapArea {
   y: number;
 }
 
+interface TopoJSONGeometry { id: string }
+interface TopoJSONTopology {
+  objects?: { countries?: { geometries?: TopoJSONGeometry[] } }
+}
+
 const props = defineProps<{
   locale?: string;
 }>();
@@ -38,9 +43,9 @@ const maxVisitors = computed(() => {
 });
 
 const mapData = computed((): MapArea[] => {
-  const geometries = (WorldMapTopoJSON as any).objects?.countries?.geometries || [];
+  const geometries = (WorldMapTopoJSON as TopoJSONTopology).objects?.countries?.geometries || [];
   const metrics = data.value?.data || [];
-  return geometries.map((geo: any) => {
+  return geometries.map((geo: TopoJSONGeometry) => {
     const metric = metrics.find((m) => m.x === geo.id);
     return { id: geo.id as string, y: metric ? metric.y : 0 };
   });
@@ -59,7 +64,7 @@ const areaColor = (d: MapArea | undefined) => {
 const regionNames = new Intl.DisplayNames([props.locale || 'en'], { type: 'region' });
 
 const tooltipTriggers = {
-  [TopoJSONMap.selectors.feature]: (d: any) => {
+  [TopoJSONMap.selectors.feature]: (d: { id?: string }) => {
     const code = d?.id;
     let name = code || 'Unknown';
     if (code) {

@@ -31,7 +31,7 @@ const getCountryName = (code: string) => {
   if (code === 'Unknown') return code;
   try {
     return regionNames.of(code) || code;
-  } catch (e) {
+  } catch {
     return code;
   }
 };
