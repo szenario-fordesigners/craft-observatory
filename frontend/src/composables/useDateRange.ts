@@ -4,7 +4,7 @@ import {
   subDays, subMonths,
   startOfWeek, endOfWeek,
   startOfMonth, endOfMonth,
-  startOfYear, endOfYear,
+  startOfYear,
   differenceInCalendarDays,
   format,
   parseISO,

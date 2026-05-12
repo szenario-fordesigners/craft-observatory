@@ -81,8 +81,15 @@ class StatsReport extends Component
         $priorVisitors = (int) ($priorStats['visitors'] ?? 0);
         [$deltaPercent, $deltaDirection] = $this->computeDelta($totalVisitors, $priorVisitors);
 
+        $syncing = false;
         $daily = array_reverse(array_map(
-            static fn (array $row) => ['date' => $row['date'], 'visitors' => (int) $row['visitors']],
+            static function (array $row) use (&$syncing): array {
+                $queued = $row['source'] === 'Queued';
+                if ($queued) {
+                    $syncing = true;
+                }
+                return ['date' => $row['date'], 'visitors' => (int) $row['visitors'], 'queued' => $queued];
+            },
             $this->getDailyStatsReport(7),
         ));
 
@@ -97,6 +104,7 @@ class StatsReport extends Component
                 'referrer' => $this->topMetric($metrics['referrer'] ?? []),
                 'browser' => $this->topMetric($metrics['browser'] ?? []),
             ],
+            '_syncing' => $syncing,
         ];
     }
 

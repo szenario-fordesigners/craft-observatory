@@ -28,7 +28,7 @@ class SyncCoordinator extends Component
      * @param int $throttleSeconds Minimum seconds between sync attempts.
      * @return bool True if a job was queued, false if throttled or already pending.
      */
-    public function autoSyncMissingDays(int $days = 30, int $throttleSeconds = 900): bool
+    public function autoSyncMissingDays(int $days = 30, int $throttleSeconds = 2): bool
     {
         $settings = UmamiIs::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
@@ -52,8 +52,9 @@ class SyncCoordinator extends Component
                 return false;
             }
 
-            if (time() - strtotime($lastUpdatedStr) < $throttleSeconds) {
-                $age = time() - strtotime($lastUpdatedStr);
+            $lastUpdatedTs = (new \DateTime($lastUpdatedStr, new \DateTimeZone('UTC')))->getTimestamp();
+            if (time() - $lastUpdatedTs < $throttleSeconds) {
+                $age = time() - $lastUpdatedTs;
                 Craft::debug("autoSyncMissingDays throttled: last sync {$age}s ago (window {$throttleSeconds}s).", 'umami-is');
                 return false;
             }

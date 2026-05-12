@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onUnmounted, watch } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
 import CrossFade from '@/shared/CrossFade.vue';
@@ -14,6 +14,7 @@ interface TopMetric {
 interface DailyEntry {
   date: string;
   visitors: number;
+  queued?: boolean;
 }
 
 interface WidgetSummary {
@@ -28,6 +29,7 @@ interface WidgetSummary {
     browser: TopMetric | null;
   };
   _status?: UmamiStatus;
+  _syncing?: boolean;
 }
 
 const hasError = (s: UmamiStatus | undefined): boolean =>
@@ -39,7 +41,32 @@ const props = defineProps<{
 
 const skeletonHeights = [55, 35, 48, 70, 100, 28, 60];
 
-const { data } = useWidgetData<WidgetSummary>('umami-is/dashboard/get-widget-summary');
+const { data, refetch } = useWidgetData<WidgetSummary>('umami-is/dashboard/get-widget-summary');
+
+const ready = computed(() => (data.value && !data.value._syncing ? data.value : null));
+
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+watch(
+  () => data.value?._syncing,
+  (syncing) => {
+    if (syncing) {
+      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
+      if (!pollTimer) {
+        pollTimer = setInterval(refetch, 5000);
+      }
+    } else {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+  },
+);
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer);
+});
 
 const localeId = props.locale || 'en';
 const numberFormatter = new Intl.NumberFormat(localeId);
@@ -55,13 +82,13 @@ const formatDay = (dateStr: string): string => {
 };
 
 const maxVisitors = computed(() => {
-  if (!data.value || data.value.daily.length === 0) return 0;
-  return Math.max(0, ...data.value.daily.map((d) => d.visitors));
+  if (!ready.value || ready.value.daily.length === 0) return 0;
+  return Math.max(0, ...ready.value.daily.map((d) => d.visitors));
 });
 
 const barHeightFor = (i: number): string => {
-  if (!data.value) return `${skeletonHeights[i]}%`;
-  const day = data.value.daily[i];
+  if (!ready.value) return `${skeletonHeights[i]}%`;
+  const day = ready.value.daily[i];
   if (!day || maxVisitors.value === 0) return '0%';
   return `${(day.visitors / maxVisitors.value) * 100}%`;
 };
@@ -76,7 +103,7 @@ const barHeightFor = (i: number): string => {
       <div class="umami-summary__col umami-summary__col--visitors">
         <div class="umami-summary__header">visitors</div>
         <svg
-          v-if="!data || data.deltaDirection > 0"
+          v-if="!ready || ready.deltaDirection > 0"
           class="umami-summary__arrow"
           viewBox="17 45 56 47"
           fill="currentColor"
@@ -87,7 +114,7 @@ const barHeightFor = (i: number): string => {
           />
         </svg>
         <svg
-          v-else-if="data.deltaDirection < 0"
+          v-else-if="ready.deltaDirection < 0"
           class="umami-summary__arrow umami-summary__arrow--down"
           viewBox="17 45 56 47"
           fill="currentColor"
@@ -112,7 +139,7 @@ const barHeightFor = (i: number): string => {
         <div class="umami-summary__header">last 7 days</div>
         <div class="umami-summary__total-count">
           <CrossFade>
-            <span v-if="data" key="total-real">{{ formatNumber(data.totalVisitors) }}</span>
+            <span v-if="ready" key="total-real">{{ formatNumber(ready.totalVisitors) }}</span>
             <SkeletonText v-else key="total-skel" variant="total" />
           </CrossFade>
         </div>
@@ -124,21 +151,21 @@ const barHeightFor = (i: number): string => {
           <div>country</div>
           <div class="umami-summary__top-value">
             <CrossFade>
-              <span v-if="data" key="country-real">{{ data.top.country?.x ?? '—' }}</span>
+              <span v-if="ready" key="country-real">{{ ready.top.country?.x ?? '—' }}</span>
               <SkeletonText v-else key="country-skel" />
             </CrossFade>
           </div>
           <div>referrers</div>
           <div class="umami-summary__top-value">
             <CrossFade>
-              <span v-if="data" key="ref-real">{{ data.top.referrer?.x ?? '—' }}</span>
+              <span v-if="ready" key="ref-real">{{ ready.top.referrer?.x ?? '—' }}</span>
               <SkeletonText v-else key="ref-skel" />
             </CrossFade>
           </div>
           <div>browser</div>
           <div class="umami-summary__top-value">
             <CrossFade>
-              <span v-if="data" key="br-real">{{ data.top.browser?.x ?? '—' }}</span>
+              <span v-if="ready" key="br-real">{{ ready.top.browser?.x ?? '—' }}</span>
               <SkeletonText v-else key="br-skel" />
             </CrossFade>
           </div>
@@ -152,18 +179,18 @@ const barHeightFor = (i: number): string => {
       <div v-for="i in 7" :key="i - 1" class="umami-summary__bar-cell">
         <div class="umami-summary__bar-value">
           <CrossFade>
-            <span v-if="data" :key="`val-${i - 1}`">
-              {{ data.daily[i - 1] ? formatNumber(data.daily[i - 1].visitors) : '' }}
+            <span v-if="ready" :key="`val-${i - 1}`">
+              {{ ready.daily[i - 1] ? formatNumber(ready.daily[i - 1].visitors) : '' }}
             </span>
             <SkeletonText v-else :key="`val-skel-${i - 1}`" variant="narrow" />
           </CrossFade>
         </div>
         <div
           class="umami-summary__bar"
-          :class="{ 'umami-summary__bar--skeleton': !data }"
+          :class="{ 'umami-summary__bar--skeleton': !ready }"
           :style="{
             height: barHeightFor(i - 1),
-            animationDelay: !data ? `${(i - 1) * 80}ms` : undefined,
+            animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined,
           }"
         ></div>
       </div>
@@ -172,9 +199,9 @@ const barHeightFor = (i: number): string => {
     <div class="umami-summary__labels">
       <div v-for="i in 7" :key="i - 1" class="umami-summary__label-cell">
         <CrossFade>
-          <div v-if="data" :key="`real-${i - 1}`" class="umami-summary__label-content">
+          <div v-if="ready" :key="`real-${i - 1}`" class="umami-summary__label-content">
             <div class="umami-summary__day">
-              {{ data.daily[i - 1] ? formatDay(data.daily[i - 1].date) : '' }}
+              {{ ready.daily[i - 1] ? formatDay(ready.daily[i - 1].date) : '' }}
             </div>
           </div>
           <div v-else :key="`skel-${i - 1}`" class="umami-summary__label-content">
@@ -183,6 +210,16 @@ const barHeightFor = (i: number): string => {
         </CrossFade>
       </div>
     </div>
+
+    </template>
+
+    <template #footer>
+      <div class="umami-widget__footer umami-summary__footer">
+        <span class="umami-summary__syncing" :class="{ 'umami-summary__syncing--hidden': !data?._syncing }">
+          syncing historical data…
+        </span>
+        <span>powered by Umami</span>
+      </div>
     </template>
   </WidgetFrame>
 </template>
@@ -333,6 +370,16 @@ const barHeightFor = (i: number): string => {
 .umami-summary__day {
   text-align: center;
   opacity: 0.55;
+}
+
+.umami-summary__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.umami-summary__syncing--hidden {
+  visibility: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {

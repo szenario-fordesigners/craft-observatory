@@ -3,7 +3,7 @@ import './assets/main.scss';
 import './shared/styles.css';
 
 import { createApp, type Component } from 'vue';
-import Summary from './widget/Summary.vue';
+import Summary from './widget/WidgetSummary.vue';
 import WorldMap from './widget/WorldMap.vue';
 import Referrers from './widget/Referrers.vue';
 import Countries from './widget/Countries.vue';
