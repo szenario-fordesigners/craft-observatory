@@ -1,0 +1,3 @@
+allowBuilds:
+  '@parcel/watcher': true
+  maplibre-gl: true

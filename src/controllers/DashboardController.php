@@ -2,7 +2,9 @@
 
 namespace szenario\craftumamiis\controllers;
 
+use craft\helpers\App;
 use craft\web\Controller;
+use szenario\craftumamiis\records\DailyEvents;
 use szenario\craftumamiis\UmamiIs;
 use yii\web\Response;
 
@@ -159,6 +161,73 @@ class DashboardController extends Controller
 
         return $this->asJson([
             'data' => $metrics ?? [],
+            '_status' => $plugin->client->getStatus(),
+        ]);
+    }
+
+    /**
+     * Top 5 events over a rolling window: UmamiIs::EVENTS_CLOSED_DAYS closed days from
+     * the local mirror plus today's counts fetched live, so totals stay current within the day.
+     */
+    public function actionGetTopEvents(): Response
+    {
+        \Craft::$app->getSession()->close();
+
+        $plugin = UmamiIs::getInstance();
+        $plugin->sync->autoSyncMissingDays();
+
+        $websiteId = App::parseEnv($plugin->getSettings()->umamiWebsiteId);
+
+        if (empty($websiteId)) {
+            return $this->asJson([
+                'data' => [],
+                '_status' => $plugin->client->getStatus(),
+            ]);
+        }
+
+        $closedDays = UmamiIs::EVENTS_CLOSED_DAYS;
+
+        $closedRows = DailyEvents::find()
+            ->select(['eventName AS x', 'SUM(total) AS y'])
+            ->where(['websiteId' => $websiteId])
+            ->andWhere(['>=', 'date', date('Y-m-d', strtotime("-{$closedDays} days"))])
+            ->andWhere(['<', 'date', date('Y-m-d')])
+            ->groupBy('eventName')
+            ->asArray()
+            ->all();
+
+        $todayStart = strtotime('today') * 1000;
+        // Bucket "now" to the minute so the underlying getMetrics cache key is stable
+        // for 60s — otherwise the per-second key bypasses caching entirely.
+        $now = (int) (floor(time() / 60) * 60) * 1000;
+        $todayRows = $plugin->client->getMetrics($todayStart, $now, 'event') ?? [];
+
+        $totals = [];
+        foreach ($closedRows as $row) {
+            $totals[(string) $row['x']] = (int) $row['y'];
+        }
+        // Defensive: /metrics is upstream and untyped, so skip rows whose shape
+        // doesn't match {x: string, y: numeric}. A nested object or missing key
+        // would otherwise silently corrupt totals via PHP's loose casts.
+        foreach ($todayRows as $row) {
+            if (!\is_array($row) || !isset($row['x'], $row['y']) || !\is_string($row['x']) || !\is_numeric($row['y'])) {
+                continue;
+            }
+            $name = $row['x'];
+            if ($name === '') {
+                continue;
+            }
+            $totals[$name] = ($totals[$name] ?? 0) + (int) $row['y'];
+        }
+
+        arsort($totals);
+        $data = [];
+        foreach (array_slice($totals, 0, 5, true) as $name => $count) {
+            $data[] = ['x' => $name, 'y' => $count];
+        }
+
+        return $this->asJson([
+            'data' => $data,
             '_status' => $plugin->client->getStatus(),
         ]);
     }

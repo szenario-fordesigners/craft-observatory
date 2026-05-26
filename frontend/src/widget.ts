@@ -3,11 +3,12 @@ import './assets/main.scss';
 import './shared/styles.css';
 
 import { createApp, type Component } from 'vue';
-import Summary from './widget/WidgetSummary.vue';
+import Summary from './widget/Summary.vue';
 import WorldMap from './widget/WorldMap.vue';
 import Referrers from './widget/Referrers.vue';
 import Countries from './widget/Countries.vue';
 import Devices from './widget/Devices.vue';
+import Events from './widget/Events.vue';
 import Heatmap from './widget/Heatmap.vue';
 
 const widgets: Record<string, Component> = {
@@ -16,6 +17,7 @@ const widgets: Record<string, Component> = {
   referrers: Referrers,
   countries: Countries,
   devices: Devices,
+  events: Events,
   heatmap: Heatmap,
 };
 

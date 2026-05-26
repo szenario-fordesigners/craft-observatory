@@ -459,6 +459,61 @@ class UmamiClient extends Component
     }
 
     /**
+     * Fetches top events (metrics?type=event) for many days concurrently.
+     *
+     * Only successful fetches appear in the returned map. Dates whose request
+     * was rejected or returned a non-array body are omitted so callers can
+     * distinguish "no events that day" (empty array) from "fetch failed"
+     * (missing key) and avoid clobbering local data on transient errors.
+     *
+     * @param array<int,array{date:string,startAt:int,endAt:int}> $days
+     * @param int $concurrency
+     * @return array<string,array<int,array{x:string,y:int}>>
+     */
+    public function getEventsBatch(array $days, int $concurrency = 8): array
+    {
+        $ctx = $this->getUmamiHttpContext(10.0);
+        if ($ctx === null) {
+            return [];
+        }
+
+        [$client, $baseUrl, $headers, $websiteId] = $ctx;
+
+        $results = [];
+
+        $requests = function () use ($days, $baseUrl, $headers) {
+            foreach ($days as $day) {
+                $uri = "{$baseUrl}/metrics?startAt={$day['startAt']}&endAt={$day['endAt']}&type=event";
+                yield $day['date'] => new Request('GET', $uri, $headers);
+            }
+        };
+
+        $pool = new Pool($client, $requests(), [
+            'concurrency' => max(1, $concurrency),
+            'fulfilled' => function ($response, $index) use (&$results, $websiteId) {
+                $this->clearAuthError($websiteId);
+
+                $date = (string) $index;
+                $body = json_decode($response->getBody()->getContents(), true);
+                if (!\is_array($body)) {
+                    return;
+                }
+                $results[$date] = $body;
+            },
+            'rejected' => function ($reason, $index) use ($websiteId) {
+                if ($reason instanceof \Throwable && $this->isAuthError($reason)) {
+                    $this->markAuthError($websiteId);
+                }
+                Craft::error("Umami events ({$index}) failed: {$reason}", __METHOD__);
+            },
+        ]);
+
+        $pool->promise()->wait();
+
+        return $results;
+    }
+
+    /**
      * @param array<mixed> $body Raw /pageviews response body.
      * @return array<int,array{hour:int,visitors:int,pageviews:int}>
      */

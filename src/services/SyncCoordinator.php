@@ -5,6 +5,8 @@ namespace szenario\craftumamiis\services;
 use Craft;
 use craft\base\Component;
 use craft\helpers\App;
+use craft\helpers\Db;
+use craft\helpers\StringHelper;
 use szenario\craftumamiis\jobs\SyncMissingDaysJob;
 use szenario\craftumamiis\records\DailyStats;
 use szenario\craftumamiis\records\HourlyStats;
@@ -62,12 +64,17 @@ class SyncCoordinator extends Component
 
         $cache = Craft::$app->getCache();
 
-        // Dedupe pending jobs across rapid concurrent renders. The job itself clears this key on completion.
+        // Dedupe pending jobs across rapid concurrent renders. The pending value stores
+        // the `days` window of the queued job, so a request that needs a wider backfill
+        // is still allowed through when an already-pending job covers fewer days.
+        // The job itself clears this key on completion.
         $pendingKey = "umami_autosync_pending_{$websiteId}";
-        if (!$cache->add($pendingKey, 1, $throttleSeconds)) {
-            Craft::debug('autoSyncMissingDays skipped: a sync job is already pending.', 'umami-is');
+        $existingPending = $cache->get($pendingKey);
+        if ($existingPending !== false && (int) $existingPending >= $days) {
+            Craft::debug("autoSyncMissingDays skipped: pending job already covers {$existingPending} day(s).", 'umami-is');
             return false;
         }
+        $cache->set($pendingKey, $days, $throttleSeconds);
 
         if (!$isFirstRun) {
             $cache->set("umami_autosync_last_attempt_{$websiteId}", 1, $throttleSeconds);
@@ -126,6 +133,74 @@ class SyncCoordinator extends Component
         }
 
         return true;
+    }
+
+    /**
+     * Replaces the umami_daily_events rows for a single date with the given top-events list.
+     *
+     * Runs in a transaction so the day's rows are never partially updated. Used by the
+     * rolling 7-day events sync pass — each call deletes the day's prior rows and inserts
+     * the latest snapshot, so events that disappear from Umami also disappear locally.
+     *
+     * @param string $date Date in 'Y-m-d' format.
+     * @param array<int,array{x:string,y:int|float}> $events Top events from Umami /metrics?type=event.
+     */
+    public function syncDailyEvents(string $date, array $events): bool
+    {
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+
+        if (empty($websiteId)) {
+            Craft::error('Cannot sync events without an Umami Website ID.', __METHOD__);
+            return false;
+        }
+
+        $db = Craft::$app->getDb();
+        $transaction = $db->beginTransaction();
+
+        try {
+            $db->createCommand()
+                ->delete('{{%umami_daily_events}}', [
+                    'websiteId' => $websiteId,
+                    'date' => $date,
+                ])
+                ->execute();
+
+            $rows = [];
+            $now = Db::prepareDateForDb(new \DateTime());
+            foreach ($events as $event) {
+                $name = (string) ($event['x'] ?? '');
+                if ($name === '') {
+                    continue;
+                }
+                $rows[] = [
+                    $websiteId,
+                    $date,
+                    $name,
+                    (int) ($event['y'] ?? 0),
+                    $now,
+                    $now,
+                    StringHelper::UUID(),
+                ];
+            }
+
+            if (!empty($rows)) {
+                $db->createCommand()
+                    ->batchInsert(
+                        '{{%umami_daily_events}}',
+                        ['websiteId', 'date', 'eventName', 'total', 'dateCreated', 'dateUpdated', 'uid'],
+                        $rows
+                    )
+                    ->execute();
+            }
+
+            $transaction->commit();
+            return true;
+        } catch (\Throwable $e) {
+            $transaction->rollBack();
+            Craft::error("Failed to sync events for {$date}: {$e->getMessage()}", __METHOD__);
+            return false;
+        }
     }
 
     /**

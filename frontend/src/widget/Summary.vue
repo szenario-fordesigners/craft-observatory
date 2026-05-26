@@ -17,7 +17,7 @@ interface DailyEntry {
   queued?: boolean;
 }
 
-interface WidgetSummary {
+interface Summary {
   totalVisitors: number;
   priorVisitors: number;
   deltaPercent: number;
@@ -40,7 +40,7 @@ const props = defineProps<{
 
 const skeletonHeights = [55, 35, 48, 70, 100, 28, 60];
 
-const { data, refetch } = useWidgetData<WidgetSummary>('umami-is/dashboard/get-widget-summary');
+const { data, refetch } = useWidgetData<Summary>('umami-is/dashboard/get-widget-summary');
 
 const ready = computed(() => (data.value && !data.value._syncing ? data.value : null));
 
@@ -300,7 +300,7 @@ const barHeightFor = (i: number): string => {
   align-items: end;
   height: 9rem;
   border-bottom: 1px solid color-mix(in srgb, var(--umami-fg) 45%, transparent);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
 }
 
 .umami-summary__bar-cell {
@@ -313,9 +313,7 @@ const barHeightFor = (i: number): string => {
 }
 
 .umami-summary__bar-value {
-  font-size: 0.65rem;
   line-height: 1;
-  opacity: 0.6;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
@@ -376,14 +374,16 @@ const barHeightFor = (i: number): string => {
 }
 
 .umami-summary__day {
+  font-size: 14px;
   text-align: center;
-  opacity: 0.55;
+  opacity: 0.7;
 }
 
 .umami-summary__footer {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
+  margin-top: 0.5rem;
 }
 
 .umami-summary__syncing--hidden {

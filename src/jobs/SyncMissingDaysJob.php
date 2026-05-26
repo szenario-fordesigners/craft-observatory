@@ -19,6 +19,13 @@ class SyncMissingDaysJob extends BaseJob
 
     public function execute($queue): void
     {
+        // Release the PHP session lock the web-based queue runner holds while
+        // this job runs — otherwise parallel widget AJAX requests on the dashboard
+        // block on session_start() for the full sync duration (~10–30s on first install).
+        if (Craft::$app->getRequest()->getIsWebRequest()) {
+            Craft::$app->getSession()->close();
+        }
+
         $cache = Craft::$app->getCache();
         $pendingKey = "umami_autosync_pending_{$this->websiteId}";
         $startTime = microtime(true);
@@ -140,6 +147,41 @@ class SyncMissingDaysJob extends BaseJob
                 }
             } else {
                 Craft::info('SyncMissingDaysJob: all hourly stats already present.', 'umami-is');
+            }
+
+            // — Events pass (rolling UmamiIs::EVENTS_CLOSED_DAYS window) —
+            // Always refreshes events across the last N closed days so late-arriving
+            // events surface, regardless of whether the daily row already exists.
+            $eventDaySpecs = [];
+            for ($i = 1; $i <= UmamiIs::EVENTS_CLOSED_DAYS; $i++) {
+                $ds = UmamiTime::dateOffset($i);
+                [$eStart, $eEnd] = UmamiTime::dayBounds($ds);
+                $eventDaySpecs[] = ['date' => $ds, 'startAt' => $eStart, 'endAt' => $eEnd];
+            }
+
+            if (!empty($eventDaySpecs)) {
+                Craft::info('SyncMissingDaysJob: fetching events for ' . \count($eventDaySpecs) . ' day(s).', 'umami-is');
+                $eventsBatch = $plugin->client->getEventsBatch($eventDaySpecs);
+
+                $eSynced = 0;
+                $eFailed = 0;
+                foreach ($eventDaySpecs as $eDay) {
+                    $ds = $eDay['date'];
+                    if (!\array_key_exists($ds, $eventsBatch)) {
+                        // Fetch failed for this day — leave existing rows untouched
+                        // rather than wiping them with an empty write.
+                        $eFailed++;
+                        Craft::warning("SyncMissingDaysJob: events fetch failed for {$ds} — leaving existing rows intact.", 'umami-is');
+                        continue;
+                    }
+                    if ($plugin->sync->syncDailyEvents($ds, $eventsBatch[$ds])) {
+                        $eSynced++;
+                    } else {
+                        $eFailed++;
+                    }
+                }
+
+                Craft::info("SyncMissingDaysJob events pass: synced={$eSynced}, failed={$eFailed}.", 'umami-is');
             }
 
             $elapsed = number_format(microtime(true) - $startTime, 2);

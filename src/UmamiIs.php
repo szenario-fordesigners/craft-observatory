@@ -32,6 +32,12 @@ use yii\base\Event;
  */
 class UmamiIs extends Plugin
 {
+    /**
+     * Number of closed (pre-today) days the events widget reads from the local mirror.
+     * The widget shows this many DB-backed days plus today's live counts (total = this + 1).
+     */
+    public const EVENTS_CLOSED_DAYS = 6;
+
     public string $schemaVersion = '1.0.0';
     public bool $hasCpSettings = true;
     public bool $hasCpSection = true;
@@ -109,6 +115,7 @@ class UmamiIs extends Plugin
             $event->types[] = \szenario\craftumamiis\widgets\UmamiIsReferrersWidget::class;
             $event->types[] = \szenario\craftumamiis\widgets\UmamiIsCountriesWidget::class;
             $event->types[] = \szenario\craftumamiis\widgets\UmamiIsDevicesWidget::class;
+            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsEventsWidget::class;
         });
     }
 }
