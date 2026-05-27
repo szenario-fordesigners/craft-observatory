@@ -47,6 +47,23 @@ class DashboardController extends Controller
     }
 
     /**
+     * Current number of active visitors for the live-visitors widget.
+     *
+     * Backed by Umami's /active endpoint (cached 60s upstream), so polling this
+     * once a minute from the client stays within one cache window.
+     */
+    public function actionGetActiveVisitors(): Response
+    {
+        \Craft::$app->getSession()->close();
+        $plugin = UmamiIs::getInstance();
+
+        return $this->asJson([
+            'visitors' => $plugin->client->getActiveVisitors() ?? 0,
+            '_status' => $plugin->client->getStatus(),
+        ]);
+    }
+
+    /**
      * Get all dashboard widget data in one request.
      *
      * @return Response|null

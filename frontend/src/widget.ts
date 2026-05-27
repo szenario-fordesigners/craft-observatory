@@ -10,6 +10,7 @@ import Countries from './widget/Countries.vue';
 import Devices from './widget/Devices.vue';
 import Events from './widget/Events.vue';
 import Heatmap from './widget/Heatmap.vue';
+import LiveVisitors from './widget/LiveVisitors.vue';
 
 const widgets: Record<string, Component> = {
   summary: Summary,
@@ -19,6 +20,7 @@ const widgets: Record<string, Component> = {
   devices: Devices,
   events: Events,
   heatmap: Heatmap,
+  'live-visitors': LiveVisitors,
 };
 
 const mounted = new WeakSet<HTMLElement>();
