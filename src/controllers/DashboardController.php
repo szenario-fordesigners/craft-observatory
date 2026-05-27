@@ -54,8 +54,7 @@ class DashboardController extends Controller
     public function actionGetDashboardData(): ?Response
     {
         $request = \Craft::$app->getRequest();
-        $startAt = (int) $request->getParam('startAt', strtotime('-7 days') * 1000);
-        $endAt = (int) $request->getParam('endAt', time() * 1000);
+        [$startAt, $endAt] = $this->resolveRange();
         $unit = $this->normalizePageviewUnit($request->getParam('unit'));
         if ($unit === null) {
             return $this->asFailure('Invalid pageview unit', ['error' => 'Invalid pageview unit']);
@@ -83,8 +82,7 @@ class DashboardController extends Controller
     public function actionGetPageviews(): ?Response
     {
         $request = \Craft::$app->getRequest();
-        $startAt = $request->getParam('startAt', strtotime('-7 days') * 1000);
-        $endAt = $request->getParam('endAt', time() * 1000);
+        [$startAt, $endAt] = $this->resolveRange();
         $unit = $this->normalizePageviewUnit($request->getParam('unit'));
         if ($unit === null) {
             return $this->asFailure('Invalid pageview unit', ['error' => 'Invalid pageview unit']);
@@ -92,8 +90,8 @@ class DashboardController extends Controller
 
         \Craft::$app->getSession()->close();
         $pageviews = UmamiIs::getInstance()->client->getPageviews(
-            (int) $startAt,
-            (int) $endAt,
+            $startAt,
+            $endAt,
             $unit
         );
 
@@ -106,14 +104,12 @@ class DashboardController extends Controller
      */
     public function actionGetStats(): Response
     {
-        $request = \Craft::$app->getRequest();
-        $startAt = $request->getParam('startAt', strtotime('-7 days') * 1000);
-        $endAt = $request->getParam('endAt', time() * 1000);
+        [$startAt, $endAt] = $this->resolveRange();
 
         \Craft::$app->getSession()->close();
         $stats = UmamiIs::getInstance()->client->getStats(
-            (int) $startAt,
-            (int) $endAt
+            $startAt,
+            $endAt
         );
 
         return $this->asJson($stats ?? []);
@@ -127,8 +123,7 @@ class DashboardController extends Controller
     public function actionGetMetrics(): ?Response
     {
         $request = \Craft::$app->getRequest();
-        $startAt = $request->getParam('startAt', strtotime('-7 days') * 1000);
-        $endAt = $request->getParam('endAt', time() * 1000);
+        [$startAt, $endAt] = $this->resolveRange();
         $typeParam = $request->getParam('type');
         $typesParams = $request->getParam('types');
 
@@ -144,7 +139,7 @@ class DashboardController extends Controller
                 return $this->asFailure('Invalid metric type(s)', ['error' => 'Invalid metric type(s)']);
             }
 
-            return $this->asJson(UmamiIs::getInstance()->client->getMetricsBatch((int) $startAt, (int) $endAt, $types));
+            return $this->asJson(UmamiIs::getInstance()->client->getMetricsBatch($startAt, $endAt, $types));
         }
 
         $types = $this->normalizeMetricTypes([(string) $typeParam]);
@@ -154,8 +149,8 @@ class DashboardController extends Controller
 
         $plugin = UmamiIs::getInstance();
         $metrics = $plugin->client->getMetrics(
-            (int) $startAt,
-            (int) $endAt,
+            $startAt,
+            $endAt,
             $types[0]
         );
 
@@ -230,6 +225,50 @@ class DashboardController extends Controller
             'data' => $data,
             '_status' => $plugin->client->getStatus(),
         ]);
+    }
+
+    /**
+     * Cache-friendly bucket size for "now"-relative query windows, in seconds.
+     */
+    private const RANGE_BUCKET_SECONDS = 60;
+
+    /**
+     * Resolves the [startAt, endAt] window (in ms) for a request.
+     *
+     * endAt is capped at a {@see self::RANGE_BUCKET_SECONDS}-second boundary so that
+     * "now"-relative queries (today, last 7 days, …) share a stable cache key within
+     * each bucket instead of producing a unique per-second/per-ms key on every render.
+     * An explicit endAt that already lies in the past passes through unchanged, so
+     * historical ranges are never truncated. The default 7-day startAt is bucketed for
+     * the same reason; an explicit startAt (always a day boundary from the UI) is left
+     * as-is.
+     *
+     * @return array{0:int,1:int}
+     */
+    private function resolveRange(): array
+    {
+        $request = \Craft::$app->getRequest();
+        $bucketedNow = $this->bucketMs(time() * 1000);
+
+        $startAtParam = $request->getParam('startAt');
+        $startAt = $startAtParam !== null
+            ? (int) $startAtParam
+            : $this->bucketMs(strtotime('-7 days') * 1000);
+
+        $endAtParam = $request->getParam('endAt');
+        $endAt = $endAtParam !== null ? (int) $endAtParam : $bucketedNow;
+
+        return [$startAt, min($endAt, $bucketedNow)];
+    }
+
+    /**
+     * Floors a millisecond timestamp down to a {@see self::RANGE_BUCKET_SECONDS} boundary.
+     */
+    private function bucketMs(int $ms): int
+    {
+        $bucketMs = self::RANGE_BUCKET_SECONDS * 1000;
+
+        return intdiv($ms, $bucketMs) * $bucketMs;
     }
 
     private function normalizePageviewUnit(mixed $unit): ?string

@@ -38,7 +38,7 @@ class SyncCoordinator extends Component
      * @param int $throttleSeconds Minimum seconds between sync attempts.
      * @return bool True if a job was queued, false if throttled or already pending.
      */
-    public function autoSyncMissingDays(int $days = 30, int $throttleSeconds = 2): bool
+    public function autoSyncMissingDays(int $days = 30, int $throttleSeconds = 300): bool
     {
         $settings = UmamiIs::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
