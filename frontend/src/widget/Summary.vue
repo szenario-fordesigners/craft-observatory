@@ -4,6 +4,7 @@ import WidgetFrame from '@/shared/WidgetFrame.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
+import Tooltip from '@/shared/Tooltip.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
 
 interface TopMetric {
@@ -183,22 +184,21 @@ const barHeightFor = (i: number): string => {
 
       <div class="umami-summary__bars">
         <div v-for="i in 7" :key="i - 1" class="umami-summary__bar-cell">
-          <div class="umami-summary__bar-value">
-            <CrossFade>
-              <span v-if="ready" :key="`val-${i - 1}`">
-                {{ ready.daily[i - 1] ? formatNumber(ready.daily[i - 1].visitors) : '' }}
-              </span>
-              <SkeletonText v-else :key="`val-skel-${i - 1}`" variant="narrow" />
-            </CrossFade>
-          </div>
-          <div
-            class="umami-summary__bar"
-            :class="{ 'umami-summary__bar--skeleton': !ready }"
-            :style="{
-              height: barHeightFor(i - 1),
-              animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined,
-            }"
-          ></div>
+          <Tooltip
+            class="umami-summary__bar-slot"
+            :text="
+              ready && ready.daily[i - 1]
+                ? `${formatNumber(ready.daily[i - 1].visitors)} visitors`
+                : ''
+            "
+            :style="{ height: barHeightFor(i - 1) }"
+          >
+            <div
+              class="umami-summary__bar"
+              :class="{ 'umami-summary__bar--skeleton': !ready }"
+              :style="{ animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined }"
+            ></div>
+          </Tooltip>
         </div>
       </div>
 
@@ -312,27 +312,19 @@ const barHeightFor = (i: number): string => {
   gap: 3px;
 }
 
-.umami-summary__bar-value {
-  line-height: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.umami-summary__bar-value > :deep(*) {
-  grid-area: 1 / 1;
-  min-width: 0;
-  text-align: center;
+.umami-summary__bar-slot {
+  width: 70%;
+  min-height: 1px;
+  transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .umami-summary__bar {
   position: relative;
-  width: 70%;
-  min-height: 1px;
+  width: 100%;
+  height: 100%;
   background-image: linear-gradient(180deg, var(--umami-fg) 0%, var(--umami-bar-bottom) 100%);
   opacity: 0.45;
-  transition:
-    height 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.4s ease;
+  transition: opacity 0.4s ease;
 }
 
 .umami-summary__bar::before {
@@ -391,6 +383,7 @@ const barHeightFor = (i: number): string => {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .umami-summary__bar-slot,
   .umami-summary__bar,
   .umami-summary__bar::before {
     transition: none;

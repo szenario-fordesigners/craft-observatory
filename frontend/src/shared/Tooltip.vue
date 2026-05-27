@@ -5,7 +5,7 @@ defineProps<{ text: string }>();
 <template>
   <div class="umami-tooltip-host">
     <slot />
-    <span class="umami-tooltip-host__bubble" role="tooltip">{{ text }}</span>
+    <span v-if="text" class="umami-tooltip-host__bubble" role="tooltip">{{ text }}</span>
   </div>
 </template>
 
