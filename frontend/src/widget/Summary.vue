@@ -93,6 +93,28 @@ const maxVisitors = computed(() => {
   return Math.max(0, ...ready.value.daily.map((d) => d.visitors));
 });
 
+// Rounds a raw step to a "nice" number (1, 2, 5 × 10ⁿ) for readable gridline values.
+const niceStep = (rawStep: number): number => {
+  const mag = 10 ** Math.floor(Math.log10(rawStep));
+  const norm = rawStep / mag;
+  const factor = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  return factor * mag;
+};
+
+// Horizontal reference lines at nice round values below the peak. Aiming for ~3
+// intervals (so usually 1–2 internal lines) keeps it sparse, like the GA reference.
+// Shares maxVisitors with the bars, so lines and bar tops are on the same scale.
+const gridLines = computed<number[]>(() => {
+  const max = maxVisitors.value;
+  if (max <= 0) return [];
+  const step = Math.max(1, Math.round(niceStep(max / 3)));
+  const lines: number[] = [];
+  for (let v = step; v < max; v += step) {
+    lines.push(v);
+  }
+  return lines;
+});
+
 const barHeightFor = (i: number): string => {
   if (!ready.value) return `${skeletonHeights[i]}%`;
   const day = ready.value.daily[i];
@@ -183,6 +205,15 @@ const barHeightFor = (i: number): string => {
       <hr class="umami-widget__divider" />
 
       <div class="umami-summary__bars">
+        <div class="umami-summary__gridlines" aria-hidden="true">
+          <div
+            v-for="line in gridLines"
+            :key="line"
+            class="umami-summary__gridline"
+            :style="{ bottom: `${(line / maxVisitors) * 100}%` }"
+          />
+        </div>
+
         <div v-for="i in 7" :key="i - 1" class="umami-summary__bar-cell">
           <Tooltip
             class="umami-summary__bar-slot"
@@ -199,6 +230,16 @@ const barHeightFor = (i: number): string => {
               :style="{ animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined }"
             ></div>
           </Tooltip>
+        </div>
+
+        <div class="umami-summary__grid-labels" aria-hidden="true">
+          <span
+            v-for="line in gridLines"
+            :key="line"
+            class="umami-summary__grid-label"
+            :style="{ bottom: `${(line / maxVisitors) * 100}%` }"
+            >{{ formatNumber(line) }}</span
+          >
         </div>
       </div>
 
@@ -294,6 +335,7 @@ const barHeightFor = (i: number): string => {
 }
 
 .umami-summary__bars {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   column-gap: 1rem;
@@ -301,6 +343,43 @@ const barHeightFor = (i: number): string => {
   height: 9rem;
   border-bottom: 1px solid color-mix(in srgb, var(--umami-fg) 45%, transparent);
   margin-bottom: 0.3rem;
+}
+
+/* Horizontal reference lines (behind bars) + value labels (in front). */
+.umami-summary__gridlines,
+.umami-summary__grid-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.umami-summary__gridlines {
+  z-index: 0;
+}
+
+.umami-summary__gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--umami-fg) 20%, transparent);
+}
+
+.umami-summary__grid-labels {
+  z-index: 2;
+}
+
+.umami-summary__grid-label {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  font-size: 12px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--umami-fg);
+  opacity: 0.55;
+  background-color: var(--umami-bg);
+  padding: 0 3px;
+  border-radius: 2px;
 }
 
 .umami-summary__bar-cell {
@@ -320,6 +399,7 @@ const barHeightFor = (i: number): string => {
 
 .umami-summary__bar {
   position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   background-image: linear-gradient(180deg, var(--umami-fg) 0%, var(--umami-bar-bottom) 100%);
@@ -366,7 +446,7 @@ const barHeightFor = (i: number): string => {
 }
 
 .umami-summary__day {
-  font-size: 14px;
+  font-size: 12px;
   text-align: center;
   opacity: 0.7;
 }
