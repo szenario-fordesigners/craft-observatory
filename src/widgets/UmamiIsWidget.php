@@ -19,6 +19,6 @@ class UmamiIsWidget extends Widget
 
     public function getBodyHtml(): ?string
     {
-        return '<div style="padding: 20px; color: red;">This is an old widget that has been replaced. Please delete this widget from your dashboard and add the new "Umami.is Summary", "World Map", or "Referrers" widgets instead.</div>';
+        return '<div style="padding: 20px; color: red;">This is an old widget that has been replaced. Please delete this widget from your dashboard and add the new "Umami.is Visitors", "World Map", or "Referrers" widgets instead.</div>';
     }
 }

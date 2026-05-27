@@ -3,7 +3,7 @@ import './assets/main.scss';
 import './shared/styles.css';
 
 import { createApp, type Component } from 'vue';
-import Summary from './widget/Summary.vue';
+import Visitors from './widget/Visitors.vue';
 import WorldMap from './widget/WorldMap.vue';
 import Referrers from './widget/Referrers.vue';
 import Countries from './widget/Countries.vue';
@@ -13,7 +13,7 @@ import Heatmap from './widget/Heatmap.vue';
 import LiveVisitors from './widget/LiveVisitors.vue';
 
 const widgets: Record<string, Component> = {
-  summary: Summary,
+  visitors: Visitors,
   'world-map': WorldMap,
   referrers: Referrers,
   countries: Countries,
