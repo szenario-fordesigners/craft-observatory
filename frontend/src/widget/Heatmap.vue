@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onUnmounted, watch } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
@@ -18,6 +18,7 @@ interface HeatmapData {
   maxVisitors: number;
   daysWithData: number;
   _status?: UmamiStatus;
+  _syncing?: boolean;
 }
 
 const props = defineProps<{ locale?: string }>();
@@ -51,7 +52,32 @@ const bucketTooltip = (di: number, bi: number): string => {
   return `${bucket.label} · ${range} ${visitors}`;
 };
 
-const { data } = useWidgetData<HeatmapData>('umami-is/dashboard/get-heatmap-data', { days: 56 });
+const { data, refetch } = useWidgetData<HeatmapData>('umami-is/dashboard/get-heatmap-data', {
+  days: 56,
+});
+
+// While sync jobs are still queued, nudge Craft's queue runner and poll for fresh data
+// every 5s. The widget renders whatever data it has in the meantime — partial coverage
+// still produces a meaningful 7×6 grid — and Vue's reactivity picks up new days as they
+// arrive.
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+watch(
+  () => data.value?._syncing,
+  (syncing) => {
+    if (syncing) {
+      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
+      if (!pollTimer) {
+        pollTimer = setInterval(refetch, 5000);
+      }
+    } else if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  },
+);
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer);
+});
 
 const cellMap = computed(() => {
   const map = new Map<string, number>();
@@ -151,7 +177,7 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
         <!-- Top 3 peak times -->
         <div class="umami-heatmap__peaks">
           <div class="umami-heatmap__peaks-title">peak times</div>
-          <CrossFade>
+          <CrossFade mode="out-in">
             <div v-if="data && peakTimes.length" key="peaks-real" class="umami-heatmap__peaks-list">
               <div v-for="(peak, i) in peakTimes" :key="i" class="umami-heatmap__peak-item">
                 <span class="umami-heatmap__peak-rank">{{ i + 1 }}</span>
@@ -231,7 +257,25 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
   background-color: var(--umami-fg);
   border-radius: 3px;
   aspect-ratio: 2 / 1;
+  /* Resting opacity used during the skeleton pulse (its low keyframe is also 0.1). */
+  opacity: 0.1;
+}
+
+/* One-shot entrance animation when the skeleton class is removed. The `to` keyframe
+   is implicit — the browser uses each cell's underlying computed opacity (i.e. the
+   inline data opacity), so each cell fades from 0.1 to its own data value cleanly.
+   We use an animation rather than a transition because transitions don't reliably
+   bridge from an animation's mid-cycle frame to a freshly applied inline value. */
+.umami-heatmap__cell:not(.umami-heatmap__cell--skeleton) {
+  animation: umami-heatmap-cell-fade-in 0.7s ease;
+  /* Smooths subsequent opacity changes (e.g. when new days arrive via polling). */
   transition: opacity 0.4s ease;
+}
+
+@keyframes umami-heatmap-cell-fade-in {
+  from {
+    opacity: 0.1;
+  }
 }
 
 .umami-heatmap__cell--peak {
@@ -251,9 +295,24 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
   text-align: center;
 }
 
+/* Subtle pulse for loading cells. Using a dedicated keyframe (not umami-bar-pulse)
+   so the range stays in the heatmap's tonal band — a full pulse would look too loud
+   on a tightly-packed grid of identical cells. */
 .umami-heatmap__cell--skeleton {
-  opacity: 0.15 !important;
-  animation: umami-bar-pulse 1.4s ease-in-out infinite;
+  /* `backwards` makes each cell adopt the keyframe's starting opacity (0.1) during its
+     per-row animation-delay, instead of sitting at the default opaque state and then
+     "darkening" row by row as each delay elapses. */
+  animation: umami-heatmap-skeleton-pulse 1.4s ease-in-out infinite backwards;
+}
+
+@keyframes umami-heatmap-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 0.32;
+  }
 }
 
 /* Stagger skeleton pulse row by row */

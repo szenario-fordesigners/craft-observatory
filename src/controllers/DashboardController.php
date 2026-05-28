@@ -27,7 +27,14 @@ class DashboardController extends Controller
         $plugin = UmamiIs::getInstance();
         $plugin->sync->autoSyncMissingDays($days);
 
+        // Any unsynced closed day in the window means a sync job is still pending —
+        // signal the client so it can poll until the historical mirror is complete.
+        $websiteId = App::parseEnv($plugin->getSettings()->umamiWebsiteId);
+        $syncing = !empty($websiteId)
+            && !empty($plugin->sync->findUnsyncedDaySpecs($websiteId, 1, $days));
+
         return $this->asJson($plugin->stats->getHeatmapData($days) + [
+            '_syncing' => $syncing,
             '_status' => $plugin->client->getStatus(),
         ]);
     }
@@ -42,6 +49,20 @@ class DashboardController extends Controller
         $plugin->sync->autoSyncMissingDays();
 
         return $this->asJson($plugin->stats->getWidgetSummary() + [
+            '_status' => $plugin->client->getStatus(),
+        ]);
+    }
+
+    /**
+     * Compact 7-day usage summary (views + average visit duration) for the dashboard widget.
+     */
+    public function actionGetUsageSummary(): Response
+    {
+        \Craft::$app->getSession()->close();
+        $plugin = UmamiIs::getInstance();
+        $plugin->sync->autoSyncMissingDays();
+
+        return $this->asJson($plugin->stats->getUsageSummary() + [
             '_status' => $plugin->client->getStatus(),
         ]);
     }

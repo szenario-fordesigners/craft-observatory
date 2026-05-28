@@ -109,6 +109,89 @@ class StatsReport extends Component
     }
 
     /**
+     * Compact summary for the usage widget: 7-day total views, average visit duration,
+     * and a daily views series for the bar chart.
+     *
+     * Total views and duration come from a single bucketed /stats call (5-min cache);
+     * the daily series reuses the DB-backed report, surfacing a `_syncing` flag when
+     * historical days are still queued.
+     *
+     * @return array{
+     *     totalViews:int,
+     *     priorViews:int,
+     *     deltaPercent:int,
+     *     deltaDirection:int,
+     *     avgDuration:int,
+     *     daily:array<int,array{date:string,views:int,queued:bool}>,
+     *     _syncing:bool
+     * }
+     */
+    public function getUsageSummary(): array
+    {
+        $empty = [
+            'totalViews' => 0,
+            'priorViews' => 0,
+            'deltaPercent' => 0,
+            'deltaDirection' => 0,
+            'avgDuration' => 0,
+            'daily' => [],
+            '_syncing' => false,
+        ];
+
+        $settings = UmamiIs::getInstance()->getSettings();
+        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+
+        if (empty($websiteId)) {
+            return $empty;
+        }
+
+        $bucketSec = 300;
+        $nowBucketed = (int) (floor(time() / $bucketSec) * $bucketSec * 1000);
+
+        // Last 7 days: midnight 6 days ago → now (bucketed).
+        [$weekStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(6));
+
+        // Prior 7 days: 14 days ago → 7 days ago. Fixed window — cached effectively forever.
+        [$priorStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(13));
+        [, $priorEnd] = UmamiTime::dayBounds(UmamiTime::dateOffset(7));
+
+        $client = UmamiIs::getInstance()->client;
+        $weekStats = $client->getStats($weekStart, $nowBucketed, $bucketSec) ?? [];
+        $priorStats = $client->getStats($priorStart, $priorEnd, $bucketSec) ?? [];
+
+        $totalViews = (int) ($weekStats['pageviews'] ?? 0);
+        $priorViews = (int) ($priorStats['pageviews'] ?? 0);
+        [$deltaPercent, $deltaDirection] = $this->computeDelta($totalViews, $priorViews);
+
+        $visits = (int) ($weekStats['visits'] ?? 0);
+        $totaltime = (int) ($weekStats['totaltime'] ?? 0);
+        // Average session duration in whole seconds; the client formats it as m:ss.
+        $avgDuration = $visits > 0 ? (int) round($totaltime / $visits) : 0;
+
+        $syncing = false;
+        $daily = array_reverse(array_map(
+            static function (array $row) use (&$syncing): array {
+                $queued = $row['source'] === 'Queued';
+                if ($queued) {
+                    $syncing = true;
+                }
+                return ['date' => $row['date'], 'views' => (int) $row['pageviews'], 'queued' => $queued];
+            },
+            $this->getDailyStatsReport(7),
+        ));
+
+        return [
+            'totalViews' => $totalViews,
+            'priorViews' => $priorViews,
+            'deltaPercent' => $deltaPercent,
+            'deltaDirection' => $deltaDirection,
+            'avgDuration' => $avgDuration,
+            'daily' => $daily,
+            '_syncing' => $syncing,
+        ];
+    }
+
+    /**
      * @param array<mixed> $metric
      * @return array{x:string,y:int}|null
      */

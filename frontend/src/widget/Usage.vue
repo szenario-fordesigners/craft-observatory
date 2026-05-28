@@ -7,28 +7,19 @@ import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
 import Tooltip from '@/shared/Tooltip.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
 
-interface TopMetric {
-  x: string;
-  y: number;
-}
-
 interface DailyEntry {
   date: string;
-  visitors: number;
+  views: number;
   queued?: boolean;
 }
 
-interface Visitors {
-  totalVisitors: number;
-  priorVisitors: number;
+interface Usage {
+  totalViews: number;
+  priorViews: number;
   deltaPercent: number;
   deltaDirection: number;
+  avgDuration: number;
   daily: DailyEntry[];
-  top: {
-    country: TopMetric | null;
-    referrer: TopMetric | null;
-    browser: TopMetric | null;
-  };
   _status?: UmamiStatus;
   _syncing?: boolean;
 }
@@ -41,7 +32,7 @@ const props = defineProps<{
 
 const skeletonHeights = [55, 35, 48, 70, 100, 28, 60];
 
-const { data, refetch } = useWidgetData<Visitors>('umami-is/dashboard/get-widget-summary');
+const { data, refetch } = useWidgetData<Usage>('umami-is/dashboard/get-usage-summary');
 
 const ready = computed(() => (data.value && !data.value._syncing ? data.value : null));
 
@@ -72,14 +63,15 @@ const localeId = props.locale || 'en';
 const numberFormatter = new Intl.NumberFormat(localeId);
 const dayFormatter = new Intl.DateTimeFormat(localeId, { weekday: 'short' });
 
-import { resolveCountryName } from '@/shared/resolveCountryName';
-
-const topCountry = computed(() => {
-  const code = ready.value?.top.country?.x;
-  return resolveCountryName(code, localeId, '—');
-});
-
 const formatNumber = (n: number) => numberFormatter.format(n);
+
+// Average visit duration: "45 s" below a minute, "2 m 37 s" above, "2 m" on the dot.
+const formatDuration = (seconds: number): string => {
+  if (seconds < 60) return `${seconds} s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s === 0 ? `${m} m` : `${m} m ${s} s`;
+};
 
 const formatDay = (dateStr: string): string => {
   const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -88,9 +80,9 @@ const formatDay = (dateStr: string): string => {
   return dayFormatter.format(new Date(y, m - 1, d));
 };
 
-const maxVisitors = computed(() => {
+const maxViews = computed(() => {
   if (!ready.value || ready.value.daily.length === 0) return 0;
-  return Math.max(0, ...ready.value.daily.map((d) => d.visitors));
+  return Math.max(0, ...ready.value.daily.map((d) => d.views));
 });
 
 // Rounds a raw step to a "nice" number (1, 2, 5 × 10ⁿ) for readable gridline values.
@@ -101,11 +93,8 @@ const niceStep = (rawStep: number): number => {
   return factor * mag;
 };
 
-// Horizontal reference lines at nice round values below the peak. Aiming for ~3
-// intervals (so usually 1–2 internal lines) keeps it sparse, like the GA reference.
-// Shares maxVisitors with the bars, so lines and bar tops are on the same scale.
 const gridLines = computed<number[]>(() => {
-  const max = maxVisitors.value;
+  const max = maxViews.value;
   if (max <= 0) return [];
   const step = Math.max(1, Math.round(niceStep(max / 3)));
   const lines: number[] = [];
@@ -118,8 +107,8 @@ const gridLines = computed<number[]>(() => {
 const barHeightFor = (i: number): string => {
   if (!ready.value) return `${skeletonHeights[i]}%`;
   const day = ready.value.daily[i];
-  if (!day || maxVisitors.value === 0) return '0%';
-  return `${(day.visitors / maxVisitors.value) * 100}%`;
+  if (!day || maxViews.value === 0) return '0%';
+  return `${(day.views / maxViews.value) * 100}%`;
 };
 </script>
 
@@ -128,12 +117,12 @@ const barHeightFor = (i: number): string => {
     <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
 
     <template v-else>
-      <div class="umami-visitors__head">
-        <div class="umami-visitors__col umami-visitors__col--visitors">
-          <div class="umami-visitors__header">visitors</div>
+      <div class="umami-usage__head">
+        <div class="umami-usage__col umami-usage__col--title">
+          <div class="umami-usage__metric-header">usage</div>
           <svg
             v-if="!ready || ready.deltaDirection > 0"
-            class="umami-visitors__arrow"
+            class="umami-usage__arrow"
             viewBox="0 0 54 51"
             fill="currentColor"
             xmlns="http://www.w3.org/2000/svg"
@@ -144,7 +133,7 @@ const barHeightFor = (i: number): string => {
           </svg>
           <svg
             v-else-if="ready.deltaDirection < 0"
-            class="umami-visitors__arrow umami-visitors__arrow--down"
+            class="umami-usage__arrow umami-usage__arrow--down"
             viewBox="0 0 54 51"
             fill="currentColor"
             xmlns="http://www.w3.org/2000/svg"
@@ -155,7 +144,7 @@ const barHeightFor = (i: number): string => {
           </svg>
           <svg
             v-else
-            class="umami-visitors__arrow"
+            class="umami-usage__arrow"
             viewBox="0 0 54 51"
             fill="currentColor"
             xmlns="http://www.w3.org/2000/svg"
@@ -164,94 +153,77 @@ const barHeightFor = (i: number): string => {
           </svg>
         </div>
 
-        <div class="umami-visitors__col umami-visitors__col--total">
-          <div class="umami-visitors__header">last 7 days</div>
-          <div class="umami-visitors__total-count">
+        <div class="umami-usage__col">
+          <div class="umami-usage__metric-header">last 7 days</div>
+          <div class="umami-usage__metric-value">
             <CrossFade>
-              <span v-if="ready" key="total-real">{{ formatNumber(ready.totalVisitors) }}</span>
-              <SkeletonText v-else key="total-skel" variant="total" />
+              <span v-if="ready" key="views-real">{{ formatNumber(ready.totalViews) }}</span>
+              <SkeletonText v-else key="views-skel" variant="total" />
             </CrossFade>
           </div>
+          <div class="umami-usage__metric-label">views</div>
         </div>
 
-        <div class="umami-visitors__col umami-visitors__col--top">
-          <div class="umami-visitors__header">top</div>
-          <div class="umami-visitors__top-grid">
-            <div>country</div>
-            <div class="umami-visitors__top-value">
-              <CrossFade>
-                <span v-if="ready" key="country-real">{{ topCountry }}</span>
-                <SkeletonText v-else key="country-skel" />
-              </CrossFade>
-            </div>
-            <div>referrers</div>
-            <div class="umami-visitors__top-value">
-              <CrossFade>
-                <span v-if="ready" key="ref-real">{{ ready.top.referrer?.x ?? '—' }}</span>
-                <SkeletonText v-else key="ref-skel" />
-              </CrossFade>
-            </div>
-            <div>browser</div>
-            <div class="umami-visitors__top-value">
-              <CrossFade>
-                <span v-if="ready" key="br-real">{{ ready.top.browser?.x ?? '—' }}</span>
-                <SkeletonText v-else key="br-skel" />
-              </CrossFade>
-            </div>
+        <div class="umami-usage__col">
+          <div class="umami-usage__metric-header">&nbsp;</div>
+          <div class="umami-usage__metric-value">
+            <CrossFade>
+              <span v-if="ready" key="dur-real">{{ formatDuration(ready.avgDuration) }}</span>
+              <SkeletonText v-else key="dur-skel" variant="total" />
+            </CrossFade>
           </div>
+          <div class="umami-usage__metric-label">visit duration</div>
         </div>
       </div>
 
       <hr class="umami-widget__divider" />
 
-      <div class="umami-visitors__bars">
-        <div class="umami-visitors__gridlines" aria-hidden="true">
+      <div class="umami-usage__bars">
+        <div class="umami-usage__gridlines" aria-hidden="true">
           <div
             v-for="line in gridLines"
             :key="line"
-            class="umami-visitors__gridline"
-            :style="{ bottom: `${(line / maxVisitors) * 100}%` }"
+            class="umami-usage__gridline"
+            :style="{ bottom: `${(line / maxViews) * 100}%` }"
           />
         </div>
 
-        <div v-for="i in 7" :key="i - 1" class="umami-visitors__bar-cell">
+        <div v-for="i in 7" :key="i - 1" class="umami-usage__bar-cell">
           <Tooltip
-            class="umami-visitors__bar-slot"
+            class="umami-usage__bar-slot"
             :text="
-              ready && ready.daily[i - 1]
-                ? `${formatNumber(ready.daily[i - 1].visitors)} visitors`
-                : ''
+              ready && ready.daily[i - 1] ? `${formatNumber(ready.daily[i - 1].views)} views` : ''
             "
             :style="{ height: barHeightFor(i - 1) }"
           >
             <div
-              class="umami-visitors__bar"
-              :class="{ 'umami-visitors__bar--skeleton': !ready }"
+              class="umami-usage__bar"
+              :class="{ 'umami-usage__bar--skeleton': !ready }"
               :style="{ animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined }"
             ></div>
           </Tooltip>
         </div>
 
-        <div class="umami-visitors__grid-labels" aria-hidden="true">
+        <div class="umami-usage__grid-labels" aria-hidden="true">
           <span
             v-for="line in gridLines"
             :key="line"
-            class="umami-visitors__grid-label"
-            :style="{ bottom: `${(line / maxVisitors) * 100}%` }"
+            class="umami-usage__grid-label"
+            :style="{ bottom: `${(line / maxViews) * 100}%` }"
             >{{ formatNumber(line) }}</span
           >
         </div>
       </div>
 
-      <div class="umami-visitors__labels">
-        <div v-for="i in 7" :key="i - 1" class="umami-visitors__label-cell">
+      <div class="umami-usage__labels">
+        <div v-for="i in 7" :key="i - 1" class="umami-usage__label-cell">
           <CrossFade>
-            <div v-if="ready" :key="`real-${i - 1}`" class="umami-visitors__label-content">
-              <div class="umami-visitors__day">
+            <div v-if="ready" :key="`real-${i - 1}`" class="umami-usage__label-content">
+              <div class="umami-usage__day">
                 {{ ready.daily[i - 1] ? formatDay(ready.daily[i - 1].date) : '' }}
               </div>
             </div>
-            <div v-else :key="`skel-${i - 1}`" class="umami-visitors__label-content">
+            <div v-else :key="`skel-${i - 1}`" class="umami-usage__label-content">
               <SkeletonText variant="narrow" />
             </div>
           </CrossFade>
@@ -260,10 +232,10 @@ const barHeightFor = (i: number): string => {
     </template>
 
     <template #footer>
-      <div class="umami-widget__footer umami-visitors__footer">
+      <div class="umami-widget__footer umami-usage__footer">
         <span
-          class="umami-visitors__syncing"
-          :class="{ 'umami-visitors__syncing--hidden': !data?._syncing }"
+          class="umami-usage__syncing"
+          :class="{ 'umami-usage__syncing--hidden': !data?._syncing }"
         >
           syncing historical data…
         </span>
@@ -274,67 +246,54 @@ const barHeightFor = (i: number): string => {
 </template>
 
 <style scoped>
-.umami-visitors__head {
+.umami-usage__head {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
   column-gap: 2.5rem;
   align-items: start;
 }
 
-.umami-visitors__col {
+.umami-usage__col {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.umami-visitors__header {
+.umami-usage__metric-header {
   font-size: 1.25rem;
   margin-bottom: 0.5rem;
+  white-space: nowrap;
 }
 
-.umami-visitors__arrow {
+.umami-usage__arrow {
   width: 3rem;
   height: 3rem;
   margin-top: 0.25rem;
   color: var(--umami-fg);
 }
 
-.umami-visitors__arrow--down {
+.umami-usage__arrow--down {
   transform: rotate(180deg);
 }
 
-.umami-visitors__total-count {
+.umami-usage__metric-value {
   font-size: 3.75rem;
   line-height: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
-.umami-visitors__total-count > :deep(*) {
+.umami-usage__metric-value > :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
 
-.umami-visitors__top-grid {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 1rem;
-  row-gap: 0.25rem;
-  line-height: 1.2;
+.umami-usage__metric-label {
+  font-size: 1.25rem;
+  margin-top: 0.25rem;
 }
 
-.umami-visitors__top-value {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.umami-visitors__top-value > :deep(*) {
-  grid-area: 1 / 1;
-  min-width: 0;
-}
-
-.umami-visitors__bars {
+.umami-usage__bars {
   position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -345,34 +304,33 @@ const barHeightFor = (i: number): string => {
   margin-bottom: 0.3rem;
 }
 
-/* Horizontal reference lines (behind bars) + value labels (in front). */
-.umami-visitors__gridlines,
-.umami-visitors__grid-labels {
+.umami-usage__gridlines,
+.umami-usage__grid-labels {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.umami-visitors__gridlines {
+.umami-usage__gridlines {
   z-index: 0;
 }
 
-.umami-visitors__gridline {
+.umami-usage__gridline {
   position: absolute;
   left: 0;
   right: 0;
   border-top: 1px dashed color-mix(in srgb, var(--umami-fg) 20%, transparent);
 }
 
-.umami-visitors__grid-labels {
+.umami-usage__grid-labels {
   z-index: 2;
 }
 
-.umami-visitors__grid-label {
+.umami-usage__grid-label {
   position: absolute;
   right: 0;
   transform: translateY(50%);
-  font-size: 12px;
+  font-size: 0.6rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--umami-fg);
@@ -382,7 +340,7 @@ const barHeightFor = (i: number): string => {
   border-radius: 2px;
 }
 
-.umami-visitors__bar-cell {
+.umami-usage__bar-cell {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -391,13 +349,13 @@ const barHeightFor = (i: number): string => {
   gap: 3px;
 }
 
-.umami-visitors__bar-slot {
+.umami-usage__bar-slot {
   width: 70%;
   min-height: 1px;
   transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.umami-visitors__bar {
+.umami-usage__bar {
   position: relative;
   z-index: 1;
   width: 100%;
@@ -407,7 +365,7 @@ const barHeightFor = (i: number): string => {
   transition: opacity 0.4s ease;
 }
 
-.umami-visitors__bar::before {
+.umami-usage__bar::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -416,18 +374,18 @@ const barHeightFor = (i: number): string => {
   transition: opacity 0.4s ease;
 }
 
-.umami-visitors__bar--skeleton::before {
+.umami-usage__bar--skeleton::before {
   opacity: 1;
   animation: umami-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-visitors__labels {
+.umami-usage__labels {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   column-gap: 1rem;
 }
 
-.umami-visitors__label-cell {
+.umami-usage__label-cell {
   text-align: center;
   font-size: 0.95rem;
   line-height: 1.2;
@@ -435,81 +393,75 @@ const barHeightFor = (i: number): string => {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.umami-visitors__label-cell > :deep(*) {
+.umami-usage__label-cell > :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
 
-.umami-visitors__label-content {
+.umami-usage__label-content {
   display: flex;
   flex-direction: column;
 }
 
-.umami-visitors__day {
-  font-size: 12px;
+.umami-usage__day {
+  font-size: 14px;
   text-align: center;
   opacity: 0.7;
 }
 
-.umami-visitors__footer {
+.umami-usage__footer {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   margin-top: 0.5rem;
 }
 
-.umami-visitors__syncing--hidden {
+.umami-usage__syncing--hidden {
   visibility: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .umami-visitors__bar-slot,
-  .umami-visitors__bar,
-  .umami-visitors__bar::before {
+  .umami-usage__bar-slot,
+  .umami-usage__bar,
+  .umami-usage__bar::before {
     transition: none;
   }
-  .umami-visitors__bar--skeleton::before {
+  .umami-usage__bar--skeleton::before {
     animation: none;
     opacity: 0.3;
   }
 }
 
 @container umami-pane (max-width: 440px) {
-  .umami-visitors__head {
+  .umami-usage__head {
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas:
-      'visitors total'
-      'top top';
+      'title views'
+      'title duration';
     row-gap: 1rem;
     column-gap: 1.5rem;
   }
-  .umami-visitors__col--visitors {
-    grid-area: visitors;
-  }
-  .umami-visitors__col--total {
-    grid-area: total;
-  }
-  .umami-visitors__col--top {
-    grid-area: top;
+  .umami-usage__col--title {
+    grid-area: title;
   }
 }
 
 @container umami-pane (max-width: 320px) {
-  .umami-visitors__head {
+  .umami-usage__head {
     grid-template-columns: 1fr;
     grid-template-areas:
-      'visitors'
-      'total'
-      'top';
+      'title'
+      'views'
+      'duration';
   }
-  .umami-visitors__total-count {
+  .umami-usage__metric-value {
     font-size: 3rem;
   }
 }
 </style>
 
 <style>
-div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsVisitorsWidget'] .widget-heading {
+div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsUsageWidget'] .widget-heading {
   display: none;
 }
 </style>
