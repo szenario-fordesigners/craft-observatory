@@ -5,6 +5,7 @@ import SkeletonText from '@/shared/SkeletonText.vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
 import Tooltip from '@/shared/Tooltip.vue';
+import CountryMap from '@/shared/CountryMap.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
 
 interface TopMetric {
@@ -29,6 +30,7 @@ interface Visitors {
     referrer: TopMetric | null;
     browser: TopMetric | null;
   };
+  countries: TopMetric[];
   _status?: UmamiStatus;
   _syncing?: boolean;
 }
@@ -257,6 +259,10 @@ const barHeightFor = (i: number): string => {
           </CrossFade>
         </div>
       </div>
+
+      <div class="umami-visitors__map">
+        <CountryMap :countries="data?.countries" :locale="localeId" />
+      </div>
     </template>
 
     <template #footer>
@@ -449,6 +455,10 @@ const barHeightFor = (i: number): string => {
   font-size: 12px;
   text-align: center;
   opacity: 0.7;
+}
+
+.umami-visitors__map {
+  margin-top: 1.25rem;
 }
 
 .umami-visitors__footer {

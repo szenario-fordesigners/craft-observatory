@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onUnmounted, watch } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
@@ -14,12 +14,38 @@ interface MetricEntry {
 interface MetricsResponse {
   data: MetricEntry[];
   _status?: UmamiStatus;
+  _syncing?: boolean;
 }
 
 const hasError = (s: UmamiStatus | undefined): boolean =>
   !!s && (!s.configured || !s.apiKeyValid);
 
-const { data, loading, error } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-top-events');
+const { data, loading, error, refetch } = useWidgetData<MetricsResponse>(
+  'umami-is/dashboard/get-top-events',
+);
+
+// While the historical events window is still syncing, nudge Craft's queue runner
+// and poll for fresh data every 5s. The widget keeps rendering whatever data it has
+// in the meantime (today's events come live from the API) and the closed-day totals
+// fill in as sync completes.
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+watch(
+  () => data.value?._syncing,
+  (syncing) => {
+    if (syncing) {
+      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
+      if (!pollTimer) {
+        pollTimer = setInterval(refetch, 5000);
+      }
+    } else if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  },
+);
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer);
+});
 
 const displayedEvents = computed(() => {
   if (!data.value?.data) return [];

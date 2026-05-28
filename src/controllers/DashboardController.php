@@ -259,8 +259,13 @@ class DashboardController extends Controller
             $data[] = ['x' => $name, 'y' => $count];
         }
 
+        // Any unsynced day inside the events window means the closed-days half of
+        // the totals is still incomplete — flag the client so it polls until done.
+        $syncing = !empty($plugin->sync->findUnsyncedDaySpecs($websiteId, 1, $closedDays));
+
         return $this->asJson([
             'data' => $data,
+            '_syncing' => $syncing,
             '_status' => $plugin->client->getStatus(),
         ]);
     }

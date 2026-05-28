@@ -104,6 +104,9 @@ class StatsReport extends Component
                 'referrer' => $this->topMetric($metrics['referrer'] ?? []),
                 'browser' => $this->topMetric($metrics['browser'] ?? []),
             ],
+            // Full country breakdown — same fetched data the top-country derives from,
+            // surfaced for the inline world map in the visitors widget.
+            'countries' => $metrics['country'] ?? [],
             '_syncing' => $syncing,
         ];
     }
