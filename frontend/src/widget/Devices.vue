@@ -78,10 +78,12 @@ const formatDeviceName = (name: string) => {
         No devices found
       </div>
       <div v-else class="umami-devices__list">
-        <div 
-          v-for="(item, index) in listItems" 
-          :key="item.x" 
+        <div
+          v-for="(item, index) in listItems"
+          :key="item.x"
           class="umami-devices__item"
+          :class="{ 'umami-devices__item--real': !item.isSkeleton }"
+          :style="!item.isSkeleton ? { animationDelay: getSkeletonDelay(index) } : undefined"
         >
           <!-- Background bar -->
           <div 
@@ -203,6 +205,19 @@ const formatDeviceName = (name: string) => {
   min-height: 40px;
   padding: 0.5rem 0.25rem;
   border-radius: 4px;
+}
+
+/* Fade-in entrance for the real items when they replace the skeleton row.
+   `backwards` holds opacity 0 during the staggered animation-delay, otherwise
+   the row would flash in before its delay elapses. */
+.umami-devices__item--real {
+  animation: umami-devices-item-fade-in 0.5s ease backwards;
+}
+
+@keyframes umami-devices-item-fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .umami-devices__bar-bg {

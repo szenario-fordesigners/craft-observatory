@@ -76,10 +76,12 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
         No referrers found
       </div>
       <div v-else class="umami-referrers__list">
-        <div 
-          v-for="(item, index) in listItems" 
-          :key="item.x" 
+        <div
+          v-for="(item, index) in listItems"
+          :key="item.x"
           class="umami-referrers__item"
+          :class="{ 'umami-referrers__item--real': !item.isSkeleton }"
+          :style="!item.isSkeleton ? { animationDelay: getSkeletonDelay(index) } : undefined"
         >
           <!-- Background bar -->
           <div 
@@ -187,6 +189,19 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
   min-height: 40px;
   padding: 0.5rem 0.25rem;
   border-radius: 4px;
+}
+
+/* Fade-in entrance for the real items when they replace the skeleton row.
+   `backwards` holds opacity 0 during the staggered animation-delay, otherwise
+   the row would flash in before its delay elapses. */
+.umami-referrers__item--real {
+  animation: umami-referrers-item-fade-in 0.5s ease backwards;
+}
+
+@keyframes umami-referrers-item-fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .umami-referrers__bar-bg {
