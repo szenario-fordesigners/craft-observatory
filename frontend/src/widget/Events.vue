@@ -147,11 +147,14 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
 </template>
 
 <style scoped>
+.pane hr.observatory-widget__divider {
+  margin-block: 1rem;
+}
+
 .observatory-events__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
 }
 
 .observatory-events__col {
@@ -160,7 +163,7 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
 }
 
 .observatory-events__header {
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   font-weight: 500;
   color: var(--observatory-fg);
   line-height: 1;

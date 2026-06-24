@@ -253,6 +253,10 @@ const barHeightFor = (i: number): string => {
 </template>
 
 <style scoped>
+.pane hr.observatory-widget__divider {
+  margin-block: 1rem;
+}
+
 .observatory-visitors__head {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
@@ -272,8 +276,8 @@ const barHeightFor = (i: number): string => {
 }
 
 .observatory-visitors__arrow {
-  width: 3rem;
-  height: 3rem;
+  width: 3.6rem;
+  height: 3.6rem;
   margin-top: 0.25rem;
   color: var(--observatory-fg);
 }
@@ -354,7 +358,7 @@ const barHeightFor = (i: number): string => {
   position: absolute;
   right: 0;
   transform: translateY(50%);
-  font-size: 0.6rem;
+  font-size: 0.875rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--observatory-fg);
