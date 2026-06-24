@@ -110,18 +110,26 @@ const gridLines = computed<number[]>(() => {
   const max = maxVisitors.value;
   if (max <= 0) return [];
   const step = Math.max(1, Math.round(niceStep(max / 3)));
+  const scaleMax = Math.max(step, Math.ceil(max / step) * step + step);
   const lines: number[] = [];
-  for (let v = step; v < max; v += step) {
+  for (let v = step; v < scaleMax; v += step) {
     lines.push(v);
   }
   return lines;
 });
 
+const chartMaxVisitors = computed(() => {
+  const max = maxVisitors.value;
+  if (max <= 0) return 0;
+  const step = Math.max(1, Math.round(niceStep(max / 3)));
+  return Math.max(step, Math.ceil(max / step) * step + step);
+});
+
 const barHeightFor = (i: number): string => {
   if (!ready.value) return `${skeletonHeights[i]}%`;
   const day = ready.value.daily[i];
-  if (!day || maxVisitors.value === 0) return '0%';
-  return `${(day.visitors / maxVisitors.value) * 100}%`;
+  if (!day || chartMaxVisitors.value === 0) return '0%';
+  return `${(day.visitors / chartMaxVisitors.value) * 100}%`;
 };
 </script>
 
@@ -212,7 +220,7 @@ const barHeightFor = (i: number): string => {
             v-for="line in gridLines"
             :key="line"
             class="umami-visitors__gridline"
-            :style="{ bottom: `${(line / maxVisitors) * 100}%` }"
+            :style="{ bottom: `${(line / chartMaxVisitors) * 100}%` }"
           />
         </div>
 
@@ -239,7 +247,7 @@ const barHeightFor = (i: number): string => {
             v-for="line in gridLines"
             :key="line"
             class="umami-visitors__grid-label"
-            :style="{ bottom: `${(line / maxVisitors) * 100}%` }"
+            :style="{ bottom: `${(line / chartMaxVisitors) * 100}%` }"
             >{{ formatNumber(line) }}</span
           >
         </div>
@@ -341,12 +349,15 @@ const barHeightFor = (i: number): string => {
 }
 
 .umami-visitors__bars {
+  --umami-visitors-axis-gutter: 1.6rem;
+
   position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   column-gap: 1rem;
   align-items: end;
   height: 9rem;
+  padding-inline-end: var(--umami-visitors-axis-gutter);
   border-bottom: 1px solid color-mix(in srgb, var(--umami-fg) 45%, transparent);
   margin-bottom: 0.3rem;
 }
@@ -378,7 +389,7 @@ const barHeightFor = (i: number): string => {
   position: absolute;
   right: 0;
   transform: translateY(50%);
-  font-size: 12px;
+  font-size: 0.6rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--umami-fg);
@@ -431,6 +442,7 @@ const barHeightFor = (i: number): string => {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   column-gap: 1rem;
+  padding-inline-end: var(--umami-visitors-axis-gutter, 1.6rem);
 }
 
 .umami-visitors__label-cell {
@@ -452,7 +464,7 @@ const barHeightFor = (i: number): string => {
 }
 
 .umami-visitors__day {
-  font-size: 12px;
+  font-size: 14px;
   text-align: center;
   opacity: 0.7;
 }
