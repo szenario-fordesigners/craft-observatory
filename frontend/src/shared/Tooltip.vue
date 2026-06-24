@@ -3,25 +3,25 @@ defineProps<{ text: string }>();
 </script>
 
 <template>
-  <div class="umami-tooltip-host">
+  <div class="observatory-tooltip-host">
     <slot />
-    <span v-if="text" class="umami-tooltip-host__bubble" role="tooltip">{{ text }}</span>
+    <span v-if="text" class="observatory-tooltip-host__bubble" role="tooltip">{{ text }}</span>
   </div>
 </template>
 
 <style scoped>
-.umami-tooltip-host {
+.observatory-tooltip-host {
   position: relative;
 }
 
-.umami-tooltip-host__bubble {
+.observatory-tooltip-host__bubble {
   position: absolute;
   bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
-  background-color: var(--umami-fg);
-  color: var(--umami-bg);
+  background-color: var(--observatory-fg);
+  color: var(--observatory-bg);
   font-size: 0.7rem;
   line-height: 1;
   padding: 4px 7px;
@@ -33,23 +33,23 @@ defineProps<{ text: string }>();
 }
 
 /* Down-pointing arrow */
-.umami-tooltip-host__bubble::after {
+.observatory-tooltip-host__bubble::after {
   content: '';
   position: absolute;
   top: 100%;
   left: 50%;
   transform: translateX(-50%);
   border: 4px solid transparent;
-  border-top-color: var(--umami-fg);
+  border-top-color: var(--observatory-fg);
 }
 
-.umami-tooltip-host:hover .umami-tooltip-host__bubble,
-.umami-tooltip-host:focus-within .umami-tooltip-host__bubble {
+.observatory-tooltip-host:hover .observatory-tooltip-host__bubble,
+.observatory-tooltip-host:focus-within .observatory-tooltip-host__bubble {
   opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .umami-tooltip-host__bubble {
+  .observatory-tooltip-host__bubble {
     transition: none;
   }
 }

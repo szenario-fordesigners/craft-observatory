@@ -7,7 +7,7 @@ defineProps<{
 </script>
 
 <template>
-  <Transition name="umami-fade" :mode="mode">
+  <Transition name="observatory-fade" :mode="mode">
     <slot />
   </Transition>
 </template>

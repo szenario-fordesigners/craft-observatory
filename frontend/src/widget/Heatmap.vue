@@ -3,7 +3,8 @@ import { computed, onUnmounted, watch } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
-import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
+import StatusNotice from '@/shared/StatusNotice.vue';
+import type { AnalyticsStatus } from '@/shared/analyticsTypes';
 import Tooltip from '@/shared/Tooltip.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
 
@@ -17,15 +18,15 @@ interface HeatmapData {
   cells: HeatmapCell[];
   maxVisitors: number;
   daysWithData: number;
-  _status?: UmamiStatus;
+  _status?: AnalyticsStatus;
   _syncing?: boolean;
 }
 
 const props = defineProps<{ locale?: string }>();
 
-defineOptions({ name: 'UmamiHeatmap' });
+defineOptions({ name: 'ObservatoryHeatmap' });
 
-const hasError = (s: UmamiStatus | undefined): boolean => !!s && (!s.configured || !s.apiKeyValid);
+const hasError = (s: AnalyticsStatus | undefined): boolean => !!s && (!s.configured || !s.apiKeyValid);
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -52,7 +53,7 @@ const bucketTooltip = (di: number, bi: number): string => {
   return `${bucket.label} · ${range} ${visitors}`;
 };
 
-const { data, refetch } = useWidgetData<HeatmapData>('umami-is/dashboard/get-heatmap-data', {
+const { data, refetch } = useWidgetData<HeatmapData>('observatory/dashboard/get-heatmap-data', {
   days: 56,
 });
 
@@ -137,36 +138,36 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
     <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
 
     <template v-else>
-      <div class="umami-heatmap">
+      <div class="observatory-heatmap">
         <!-- Title -->
         <div>
-          <div class="umami-heatmap__title">traffic patterns</div>
-          <div class="umami-heatmap__subtitle">last 8 weeks</div>
+          <div class="observatory-heatmap__title">traffic patterns</div>
+          <div class="observatory-heatmap__subtitle">last 8 weeks</div>
         </div>
 
         <!-- 7×6 condensed heatmap -->
-        <div class="umami-heatmap__grid-wrap">
+        <div class="observatory-heatmap__grid-wrap">
           <!-- Column labels -->
-          <div class="umami-heatmap__col-labels">
+          <div class="observatory-heatmap__col-labels">
             <div />
-            <div v-for="bucket in BUCKETS" :key="bucket.label" class="umami-heatmap__col-label">
+            <div v-for="bucket in BUCKETS" :key="bucket.label" class="observatory-heatmap__col-label">
               {{ bucket.label }}
             </div>
           </div>
 
           <!-- One row per weekday -->
-          <div v-for="(day, di) in DAYS" :key="day" class="umami-heatmap__row">
-            <div class="umami-heatmap__row-label">{{ day }}</div>
+          <div v-for="(day, di) in DAYS" :key="day" class="observatory-heatmap__row">
+            <div class="observatory-heatmap__row-label">{{ day }}</div>
             <Tooltip v-for="(_, bi) in BUCKETS" :key="bi" :text="bucketTooltip(di, bi)">
               <div
-                class="umami-heatmap__cell"
+                class="observatory-heatmap__cell"
                 :class="{
-                  'umami-heatmap__cell--skeleton': !data,
-                  'umami-heatmap__cell--peak': data && peakRank(di, bi),
+                  'observatory-heatmap__cell--skeleton': !data,
+                  'observatory-heatmap__cell--peak': data && peakRank(di, bi),
                 }"
                 :style="data ? { opacity: cellOpacity(bucketGrid[di][bi]) } : {}"
               >
-                <span v-if="data && peakRank(di, bi)" class="umami-heatmap__cell-rank">
+                <span v-if="data && peakRank(di, bi)" class="observatory-heatmap__cell-rank">
                   {{ peakRank(di, bi) }}
                 </span>
               </div>
@@ -175,21 +176,21 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
         </div>
 
         <!-- Top 3 peak times -->
-        <div class="umami-heatmap__peaks">
-          <div class="umami-heatmap__peaks-title">peak times</div>
+        <div class="observatory-heatmap__peaks">
+          <div class="observatory-heatmap__peaks-title">peak times</div>
           <CrossFade mode="out-in">
-            <div v-if="data && peakTimes.length" key="peaks-real" class="umami-heatmap__peaks-list">
-              <div v-for="(peak, i) in peakTimes" :key="i" class="umami-heatmap__peak-item">
-                <span class="umami-heatmap__peak-rank">{{ i + 1 }}</span>
+            <div v-if="data && peakTimes.length" key="peaks-real" class="observatory-heatmap__peaks-list">
+              <div v-for="(peak, i) in peakTimes" :key="i" class="observatory-heatmap__peak-item">
+                <span class="observatory-heatmap__peak-rank">{{ i + 1 }}</span>
                 <span>{{ peakLabel(peak.weekday, peak.bucketIdx) }}</span>
               </div>
             </div>
-            <div v-else-if="data" key="peaks-empty" class="umami-heatmap__peaks-empty">
+            <div v-else-if="data" key="peaks-empty" class="observatory-heatmap__peaks-empty">
               no data yet
             </div>
-            <div v-else key="peaks-skel" class="umami-heatmap__peaks-list">
-              <div v-for="i in 3" :key="i" class="umami-heatmap__peak-item">
-                <div class="umami-heatmap__peak-rank umami-heatmap__peak-rank--skeleton" />
+            <div v-else key="peaks-skel" class="observatory-heatmap__peaks-list">
+              <div v-for="i in 3" :key="i" class="observatory-heatmap__peak-item">
+                <div class="observatory-heatmap__peak-rank observatory-heatmap__peak-rank--skeleton" />
                 <SkeletonText />
               </div>
             </div>
@@ -201,38 +202,38 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
 </template>
 
 <style scoped>
-.umami-heatmap {
+.observatory-heatmap {
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
 }
 
-.umami-heatmap__title {
+.observatory-heatmap__title {
   font-size: 1.25rem;
   margin-bottom: 0.1rem;
 }
 
-.umami-heatmap__subtitle {
+.observatory-heatmap__subtitle {
   font-size: 0.75rem;
   opacity: 0.6;
 }
 
 /* Grid */
-.umami-heatmap__grid-wrap {
+.observatory-heatmap__grid-wrap {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.umami-heatmap__col-labels,
-.umami-heatmap__row {
+.observatory-heatmap__col-labels,
+.observatory-heatmap__row {
   display: grid;
   grid-template-columns: 2.25rem repeat(6, minmax(0, 1fr));
   gap: 3px;
   align-items: center;
 }
 
-.umami-heatmap__col-label {
+.observatory-heatmap__col-label {
   text-align: center;
   font-size: 0.55rem;
   opacity: 0.55;
@@ -242,7 +243,7 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
   white-space: nowrap;
 }
 
-.umami-heatmap__row-label {
+.observatory-heatmap__row-label {
   font-size: 0.65rem;
   opacity: 0.65;
   text-align: right;
@@ -250,11 +251,11 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
   line-height: 1;
 }
 
-.umami-heatmap__cell {
+.observatory-heatmap__cell {
   position: relative;
   display: grid;
   place-items: center;
-  background-color: var(--umami-fg);
+  background-color: var(--observatory-fg);
   border-radius: 3px;
   aspect-ratio: 2 / 1;
   /* Resting opacity used during the skeleton pulse (its low keyframe is also 0.1). */
@@ -266,28 +267,28 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
    inline data opacity), so each cell fades from 0.1 to its own data value cleanly.
    We use an animation rather than a transition because transitions don't reliably
    bridge from an animation's mid-cycle frame to a freshly applied inline value. */
-.umami-heatmap__cell:not(.umami-heatmap__cell--skeleton) {
-  animation: umami-heatmap-cell-fade-in 0.7s ease;
+.observatory-heatmap__cell:not(.observatory-heatmap__cell--skeleton) {
+  animation: observatory-heatmap-cell-fade-in 0.7s ease;
   /* Smooths subsequent opacity changes (e.g. when new days arrive via polling). */
   transition: opacity 0.4s ease;
 }
 
-@keyframes umami-heatmap-cell-fade-in {
+@keyframes observatory-heatmap-cell-fade-in {
   from {
     opacity: 0.1;
   }
 }
 
-.umami-heatmap__cell--peak {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--umami-bg) 70%, transparent);
+.observatory-heatmap__cell--peak {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--observatory-bg) 70%, transparent);
 }
 
-.umami-heatmap__cell-rank {
+.observatory-heatmap__cell-rank {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background-color: color-mix(in srgb, var(--umami-bg) 86%, transparent);
-  color: var(--umami-fg);
+  background-color: color-mix(in srgb, var(--observatory-bg) 86%, transparent);
+  color: var(--observatory-fg);
   font-size: 10px;
   font-weight: bold;
   font-variant-numeric: tabular-nums;
@@ -295,17 +296,17 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
   text-align: center;
 }
 
-/* Subtle pulse for loading cells. Using a dedicated keyframe (not umami-bar-pulse)
+/* Subtle pulse for loading cells. Using a dedicated keyframe (not observatory-bar-pulse)
    so the range stays in the heatmap's tonal band — a full pulse would look too loud
    on a tightly-packed grid of identical cells. */
-.umami-heatmap__cell--skeleton {
+.observatory-heatmap__cell--skeleton {
   /* `backwards` makes each cell adopt the keyframe's starting opacity (0.1) during its
      per-row animation-delay, instead of sitting at the default opaque state and then
      "darkening" row by row as each delay elapses. */
-  animation: umami-heatmap-skeleton-pulse 1.4s ease-in-out infinite backwards;
+  animation: observatory-heatmap-skeleton-pulse 1.4s ease-in-out infinite backwards;
 }
 
-@keyframes umami-heatmap-skeleton-pulse {
+@keyframes observatory-heatmap-skeleton-pulse {
   0%,
   100% {
     opacity: 0.1;
@@ -316,40 +317,40 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
 }
 
 /* Stagger skeleton pulse row by row */
-.umami-heatmap__row:nth-child(2) .umami-heatmap__cell--skeleton {
+.observatory-heatmap__row:nth-child(2) .observatory-heatmap__cell--skeleton {
   animation-delay: 0ms;
 }
-.umami-heatmap__row:nth-child(3) .umami-heatmap__cell--skeleton {
+.observatory-heatmap__row:nth-child(3) .observatory-heatmap__cell--skeleton {
   animation-delay: 80ms;
 }
-.umami-heatmap__row:nth-child(4) .umami-heatmap__cell--skeleton {
+.observatory-heatmap__row:nth-child(4) .observatory-heatmap__cell--skeleton {
   animation-delay: 160ms;
 }
-.umami-heatmap__row:nth-child(5) .umami-heatmap__cell--skeleton {
+.observatory-heatmap__row:nth-child(5) .observatory-heatmap__cell--skeleton {
   animation-delay: 240ms;
 }
-.umami-heatmap__row:nth-child(6) .umami-heatmap__cell--skeleton {
+.observatory-heatmap__row:nth-child(6) .observatory-heatmap__cell--skeleton {
   animation-delay: 320ms;
 }
-.umami-heatmap__row:nth-child(7) .umami-heatmap__cell--skeleton {
+.observatory-heatmap__row:nth-child(7) .observatory-heatmap__cell--skeleton {
   animation-delay: 400ms;
 }
-.umami-heatmap__row:nth-child(8) .umami-heatmap__cell--skeleton {
+.observatory-heatmap__row:nth-child(8) .observatory-heatmap__cell--skeleton {
   animation-delay: 480ms;
 }
 
 /* Peak times */
-.umami-heatmap__peaks {
+.observatory-heatmap__peaks {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 0.75rem;
   padding: 0.65rem 0.75rem;
   border-radius: 0.7rem;
-  background-color: color-mix(in srgb, var(--umami-fg) 8%, transparent);
+  background-color: color-mix(in srgb, var(--observatory-fg) 8%, transparent);
 }
 
-.umami-heatmap__peaks-title {
+.observatory-heatmap__peaks-title {
   font-size: 0.65rem;
   line-height: 1;
   letter-spacing: 0.04em;
@@ -358,31 +359,31 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
   white-space: nowrap;
 }
 
-.umami-heatmap__peaks-list {
+.observatory-heatmap__peaks-list {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
   min-width: 0;
 }
 
-.umami-heatmap__peak-item {
+.observatory-heatmap__peak-item {
   display: flex;
   align-items: center;
   gap: 0.35rem;
   min-width: 0;
   padding: 0.25rem 0.45rem 0.25rem 0.25rem;
   border-radius: 999px;
-  background-color: color-mix(in srgb, var(--umami-fg) 10%, transparent);
+  background-color: color-mix(in srgb, var(--observatory-fg) 10%, transparent);
   font-size: 0.75rem;
   line-height: 1;
 }
 
-.umami-heatmap__peak-rank {
+.observatory-heatmap__peak-rank {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background-color: var(--umami-fg);
-  color: var(--umami-bg);
+  background-color: var(--observatory-fg);
+  color: var(--observatory-bg);
   font-size: 10px;
   font-weight: bold;
   font-variant-numeric: tabular-nums;
@@ -392,27 +393,27 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
   opacity: 0.75;
 }
 
-.umami-heatmap__peak-rank--skeleton {
+.observatory-heatmap__peak-rank--skeleton {
   opacity: 0.2;
-  animation: umami-bar-pulse 1.4s ease-in-out infinite;
+  animation: observatory-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-heatmap__peaks-empty {
+.observatory-heatmap__peaks-empty {
   font-size: 0.75rem;
   opacity: 0.55;
 }
 
-@container umami-pane (max-width: 440px) {
-  .umami-heatmap__peaks {
+@container observatory-pane (max-width: 440px) {
+  .observatory-heatmap__peaks {
     grid-template-columns: 1fr;
     align-items: start;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .umami-heatmap__cell,
-  .umami-heatmap__cell--skeleton,
-  .umami-heatmap__peak-rank--skeleton {
+  .observatory-heatmap__cell,
+  .observatory-heatmap__cell--skeleton,
+  .observatory-heatmap__peak-rank--skeleton {
     transition: none;
     animation: none;
     opacity: 0.15;
@@ -421,7 +422,7 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
 </style>
 
 <style>
-div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsHeatmapWidget'] .widget-heading {
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryHeatmapWidget'] .widget-heading {
   display: none;
 }
 </style>

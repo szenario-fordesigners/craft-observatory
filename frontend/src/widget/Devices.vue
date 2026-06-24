@@ -3,7 +3,8 @@ import { computed } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
-import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
+import StatusNotice from '@/shared/StatusNotice.vue';
+import type { AnalyticsStatus } from '@/shared/analyticsTypes';
 import { useWidgetData } from '@/shared/useWidgetData';
 
 interface MetricEntry {
@@ -13,13 +14,13 @@ interface MetricEntry {
 
 interface MetricsResponse {
   data: MetricEntry[];
-  _status?: UmamiStatus;
+  _status?: AnalyticsStatus;
 }
 
-const hasError = (s: UmamiStatus | undefined): boolean =>
+const hasError = (s: AnalyticsStatus | undefined): boolean =>
   !!s && (!s.configured || !s.apiKeyValid);
 
-const { data, loading, error } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?type=device');
+const { data, loading, error } = useWidgetData<MetricsResponse>('observatory/dashboard/get-metrics?type=device');
 
 const displayedDevices = computed(() => {
   if (!data.value?.data) return [];
@@ -61,68 +62,68 @@ const formatDeviceName = (name: string) => {
     <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
 
     <template v-else>
-    <div class="umami-devices__head">
-      <div class="umami-devices__col">
-        <div class="umami-devices__header">top devices</div>
-        <div class="umami-devices__subheader">last 7 days</div>
+    <div class="observatory-devices__head">
+      <div class="observatory-devices__col">
+        <div class="observatory-devices__header">top devices</div>
+        <div class="observatory-devices__subheader">last 7 days</div>
       </div>
     </div>
 
-    <hr class="umami-widget__divider" />
+    <hr class="observatory-widget__divider" />
 
-    <div class="umami-devices__list-container">
-      <div v-if="error" class="umami-devices__error">
+    <div class="observatory-devices__list-container">
+      <div v-if="error" class="observatory-devices__error">
         Failed to load devices
       </div>
-      <div v-else-if="!loading && listItems.length === 0" class="umami-devices__empty">
+      <div v-else-if="!loading && listItems.length === 0" class="observatory-devices__empty">
         No devices found
       </div>
-      <div v-else class="umami-devices__list">
+      <div v-else class="observatory-devices__list">
         <div
           v-for="(item, index) in listItems"
           :key="item.x"
-          class="umami-devices__item"
-          :class="{ 'umami-devices__item--real': !item.isSkeleton }"
+          class="observatory-devices__item"
+          :class="{ 'observatory-devices__item--real': !item.isSkeleton }"
           :style="!item.isSkeleton ? { animationDelay: getSkeletonDelay(index) } : undefined"
         >
           <!-- Background bar -->
           <div 
-            class="umami-devices__bar-bg"
-            :class="{ 'umami-devices__bar-bg--skeleton': item.isSkeleton }"
+            class="observatory-devices__bar-bg"
+            :class="{ 'observatory-devices__bar-bg--skeleton': item.isSkeleton }"
             :style="{ 
               width: item.isSkeleton ? '100%' : `${(item.y / maxVisitors) * 100}%`,
               animationDelay: item.isSkeleton ? getSkeletonDelay(index) : undefined 
             }"
           ></div>
           
-          <div class="umami-devices__item-content">
-            <div class="umami-devices__domain-group">
+          <div class="observatory-devices__item-content">
+            <div class="observatory-devices__domain-group">
               <CrossFade>
                 <div 
                   v-if="item.isSkeleton" 
                   key="skel-icon" 
-                  class="umami-devices__skeleton-icon"
+                  class="observatory-devices__skeleton-icon"
                   :style="{ animationDelay: getSkeletonDelay(index) }"
                 ></div>
                 <!-- Device SVGs based on name -->
-                <svg v-else-if="item.x.toLowerCase() === 'desktop'" key="desktop" class="umami-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg v-else-if="item.x.toLowerCase() === 'desktop'" key="desktop" class="observatory-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
                   <line x1="8" y1="21" x2="16" y2="21"></line>
                   <line x1="12" y1="17" x2="12" y2="21"></line>
                 </svg>
-                <svg v-else-if="item.x.toLowerCase() === 'laptop'" key="laptop" class="umami-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg v-else-if="item.x.toLowerCase() === 'laptop'" key="laptop" class="observatory-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="3" y="4" width="18" height="12" rx="2" ry="2"></rect>
                   <path d="M2 20h20"></path>
                 </svg>
-                <svg v-else-if="item.x.toLowerCase() === 'tablet'" key="tablet" class="umami-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg v-else-if="item.x.toLowerCase() === 'tablet'" key="tablet" class="observatory-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
                   <line x1="12" y1="18" x2="12.01" y2="18"></line>
                 </svg>
-                <svg v-else-if="item.x.toLowerCase() === 'mobile'" key="mobile" class="umami-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg v-else-if="item.x.toLowerCase() === 'mobile'" key="mobile" class="observatory-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
                   <line x1="12" y1="18" x2="12.01" y2="18"></line>
                 </svg>
-                <svg v-else key="unknown" class="umami-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg v-else key="unknown" class="observatory-devices__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
                   <line x1="8" y1="21" x2="16" y2="21"></line>
                   <line x1="12" y1="17" x2="12" y2="21"></line>
@@ -136,7 +137,7 @@ const formatDeviceName = (name: string) => {
                   style="width: 100px;" 
                   :style="{ animationDelay: getSkeletonDelay(index) }"
                 />
-                <span v-else key="real-text" class="umami-devices__domain">{{ formatDeviceName(item.x) }}</span>
+                <span v-else key="real-text" class="observatory-devices__domain">{{ formatDeviceName(item.x) }}</span>
               </CrossFade>
             </div>
             
@@ -147,7 +148,7 @@ const formatDeviceName = (name: string) => {
                 style="width: 30px;" 
                 :style="{ animationDelay: getSkeletonDelay(index) }"
               />
-              <span v-else key="real-val" class="umami-devices__visitors">{{ item.y }}</span>
+              <span v-else key="real-val" class="observatory-devices__visitors">{{ item.y }}</span>
             </CrossFade>
           </div>
         </div>
@@ -158,47 +159,47 @@ const formatDeviceName = (name: string) => {
 </template>
 
 <style scoped>
-.umami-devices__head {
+.observatory-devices__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
 }
 
-.umami-devices__col {
+.observatory-devices__col {
   display: flex;
   flex-direction: column;
 }
 
-.umami-devices__header {
+.observatory-devices__header {
   font-size: 1.125rem;
   font-weight: 500;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   line-height: 1;
 }
 
-.umami-devices__subheader {
+.observatory-devices__subheader {
   font-size: 0.875rem;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   opacity: 0.7;
   margin-top: 0.25rem;
 }
 
-.umami-devices__list-container {
+.observatory-devices__list-container {
   position: relative;
   min-height: 200px;
   display: flex;
   flex-direction: column;
 }
 
-.umami-devices__list {
+.observatory-devices__list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
 }
 
-.umami-devices__item {
+.observatory-devices__item {
   position: relative;
   display: flex;
   align-items: center;
@@ -210,33 +211,33 @@ const formatDeviceName = (name: string) => {
 /* Fade-in entrance for the real items when they replace the skeleton row.
    `backwards` holds opacity 0 during the staggered animation-delay, otherwise
    the row would flash in before its delay elapses. */
-.umami-devices__item--real {
-  animation: umami-devices-item-fade-in 0.5s ease backwards;
+.observatory-devices__item--real {
+  animation: observatory-devices-item-fade-in 0.5s ease backwards;
 }
 
-@keyframes umami-devices-item-fade-in {
+@keyframes observatory-devices-item-fade-in {
   from {
     opacity: 0;
   }
 }
 
-.umami-devices__bar-bg {
+.observatory-devices__bar-bg {
   position: absolute;
   top: 0;
   left: 0;
   height: 100%;
-  background-color: color-mix(in srgb, var(--umami-fg) 10%, transparent);
+  background-color: color-mix(in srgb, var(--observatory-fg) 10%, transparent);
   border-radius: 4px;
   z-index: 0;
   transition: width 0.5s ease-out;
 }
 
-.umami-devices__bar-bg--skeleton {
+.observatory-devices__bar-bg--skeleton {
   opacity: 0.4;
-  animation: umami-bar-pulse 1.4s ease-in-out infinite;
+  animation: observatory-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-devices__item-content {
+.observatory-devices__item-content {
   position: relative;
   z-index: 1;
   display: flex;
@@ -246,55 +247,55 @@ const formatDeviceName = (name: string) => {
   padding: 0 0.5rem;
 }
 
-.umami-devices__domain-group {
+.observatory-devices__domain-group {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   overflow: hidden;
 }
 
-.umami-devices__icon {
+.observatory-devices__icon {
   width: 18px;
   height: 18px;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   opacity: 0.8;
   flex-shrink: 0;
 }
 
-.umami-devices__skeleton-icon {
+.observatory-devices__skeleton-icon {
   width: 18px;
   height: 18px;
   border-radius: 2px;
-  background-color: color-mix(in srgb, var(--umami-fg) 20%, transparent);
-  animation: umami-bar-pulse 1.4s ease-in-out infinite;
+  background-color: color-mix(in srgb, var(--observatory-fg) 20%, transparent);
+  animation: observatory-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-devices__domain {
+.observatory-devices__domain {
   font-size: 0.95rem;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.umami-devices__visitors {
+.observatory-devices__visitors {
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   padding-left: 1rem;
 }
 
-.umami-devices__error,
-.umami-devices__empty {
+.observatory-devices__error,
+.observatory-devices__empty {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   opacity: 0.7;
 }
 
-@keyframes umami-bar-pulse {
+@keyframes observatory-bar-pulse {
   0% { opacity: 0.4; }
   50% { opacity: 0.8; }
   100% { opacity: 0.4; }
@@ -302,7 +303,7 @@ const formatDeviceName = (name: string) => {
 </style>
 
 <style>
-div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsDevicesWidget'] .widget-heading {
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryDevicesWidget'] .widget-heading {
   display: none;
 }
 </style>

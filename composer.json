@@ -1,12 +1,12 @@
 {
-	"name": "szenario/craft-umami-is",
+	"name": "szenario/craft-observatory",
 	"type": "craft-plugin",
 	"license": "proprietary",
 	"support": {
-		"issues": "https://github.com/szenario-fordesigners/craft-umami-is/issues?state=open",
-		"source": "https://github.com/szenario-fordesigners/craft-umami-is",
-		"docs": "https://github.com/szenario-fordesigners/craft-umami-is",
-		"rss": "https://github.com/szenario-fordesigners/craft-umami-is/releases.atom"
+		"issues": "https://github.com/szenario-fordesigners/craft-observatory/issues?state=open",
+		"source": "https://github.com/szenario-fordesigners/craft-observatory",
+		"docs": "https://github.com/szenario-fordesigners/craft-observatory",
+		"rss": "https://github.com/szenario-fordesigners/craft-observatory/releases.atom"
 	},
 	"require": {
 		"php": ">=8.2",
@@ -19,12 +19,12 @@
 	},
 	"autoload": {
 		"psr-4": {
-			"szenario\\craftumamiis\\": "src/"
+			"szenario\\craftobservatory\\": "src/"
 		}
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"szenario\\craftumamiis\\tests\\": "tests/"
+			"szenario\\craftobservatory\\tests\\": "tests/"
 		}
 	},
 	"archive": {
@@ -55,11 +55,11 @@
 		]
 	},
 	"extra": {
-		"handle": "umami-is",
-		"name": "umami",
+		"handle": "observatory",
+		"name": "Observatory",
 		"developer": "szenario",
-		"documentationUrl": "https://github.com/szenario-fordesigners/craft-umami-is",
-		"class": "szenario\\craftumamiis\\UmamiIs"
+		"documentationUrl": "https://github.com/szenario-fordesigners/craft-observatory",
+		"class": "szenario\\craftobservatory\\Observatory"
 	},
 	"scripts": {
 		"check-cs": "ecs check --ansi",

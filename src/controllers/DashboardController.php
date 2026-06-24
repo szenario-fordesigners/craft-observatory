@@ -1,10 +1,10 @@
 <?php
 
-namespace szenario\craftumamiis\controllers;
+namespace szenario\craftobservatory\controllers;
 
 use craft\web\Controller;
-use szenario\craftumamiis\records\DailyEvents;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\records\DailyEvents;
+use szenario\craftobservatory\Observatory;
 use yii\web\Response;
 
 class DashboardController extends Controller
@@ -23,7 +23,7 @@ class DashboardController extends Controller
 
         \Craft::$app->getSession()->close();
 
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $plugin->sync->autoSyncMissingDays($days);
 
         // Any unsynced closed day in the window means a sync job is still pending —
@@ -44,7 +44,7 @@ class DashboardController extends Controller
     public function actionGetWidgetSummary(): Response
     {
         \Craft::$app->getSession()->close();
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $plugin->sync->autoSyncMissingDays();
 
         return $this->asJson($plugin->stats->getWidgetSummary() + [
@@ -58,7 +58,7 @@ class DashboardController extends Controller
     public function actionGetUsageSummary(): Response
     {
         \Craft::$app->getSession()->close();
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $plugin->sync->autoSyncMissingDays();
 
         return $this->asJson($plugin->stats->getUsageSummary() + [
@@ -69,13 +69,13 @@ class DashboardController extends Controller
     /**
      * Current number of active visitors for the live-visitors widget.
      *
-     * Backed by Umami's /active endpoint (cached 60s upstream), so polling this
+     * Backed by the configured analytics source (cached 60s upstream), so polling this
      * once a minute from the client stays within one cache window.
      */
     public function actionGetActiveVisitors(): Response
     {
         \Craft::$app->getSession()->close();
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
 
         return $this->asJson([
             'visitors' => $plugin->analytics->getLiveVisitors() ?? 0,
@@ -100,7 +100,7 @@ class DashboardController extends Controller
         $includePageviews = (string) $request->getParam('includePageviews', '1') !== '0';
 
         \Craft::$app->getSession()->close();
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $metrics = $plugin->analytics->getBreakdowns($startAt, $endAt, self::DEFAULT_METRIC_TYPES);
 
         return $this->asJson([
@@ -126,7 +126,7 @@ class DashboardController extends Controller
         }
 
         \Craft::$app->getSession()->close();
-        $pageviews = UmamiIs::getInstance()->analytics->getPageviews(
+        $pageviews = Observatory::getInstance()->analytics->getPageviews(
             $startAt,
             $endAt,
             $unit
@@ -144,7 +144,7 @@ class DashboardController extends Controller
         [$startAt, $endAt] = $this->resolveRange();
 
         \Craft::$app->getSession()->close();
-        $stats = UmamiIs::getInstance()->analytics->getTotals(
+        $stats = Observatory::getInstance()->analytics->getTotals(
             $startAt,
             $endAt
         );
@@ -176,7 +176,7 @@ class DashboardController extends Controller
                 return $this->asFailure('Invalid metric type(s)', ['error' => 'Invalid metric type(s)']);
             }
 
-            return $this->asJson(UmamiIs::getInstance()->analytics->getBreakdowns($startAt, $endAt, $types));
+            return $this->asJson(Observatory::getInstance()->analytics->getBreakdowns($startAt, $endAt, $types));
         }
 
         $types = $this->normalizeMetricTypes([(string) $typeParam]);
@@ -184,7 +184,7 @@ class DashboardController extends Controller
             return $this->asFailure('Invalid metric type', ['error' => 'Invalid metric type']);
         }
 
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $metrics = $plugin->analytics->getBreakdown(
             $startAt,
             $endAt,
@@ -198,14 +198,14 @@ class DashboardController extends Controller
     }
 
     /**
-     * Top 5 events over a rolling window: UmamiIs::EVENTS_CLOSED_DAYS closed days from
+     * Top 5 events over a rolling window: Observatory::EVENTS_CLOSED_DAYS closed days from
      * the local mirror plus today's counts fetched live, so totals stay current within the day.
      */
     public function actionGetTopEvents(): Response
     {
         \Craft::$app->getSession()->close();
 
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $plugin->sync->autoSyncMissingDays();
 
         $websiteId = $plugin->analytics->getStorageKey();
@@ -217,7 +217,7 @@ class DashboardController extends Controller
             ]);
         }
 
-        $closedDays = UmamiIs::EVENTS_CLOSED_DAYS;
+        $closedDays = Observatory::EVENTS_CLOSED_DAYS;
 
         $closedRows = DailyEvents::find()
             ->select(['eventName AS x', 'SUM(total) AS y'])

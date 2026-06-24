@@ -1,8 +1,8 @@
 <template>
-  <div class="umami-widget">
+  <div class="observatory-widget">
     <slot />
     <slot name="footer">
-      <div class="umami-widget__footer">powered by analytics source</div>
+      <div class="observatory-widget__footer">powered by analytics source</div>
     </slot>
   </div>
 </template>

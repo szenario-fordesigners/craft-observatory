@@ -1,10 +1,10 @@
 <?php
 
-namespace szenario\craftumamiis\jobs;
+namespace szenario\craftobservatory\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\Observatory;
 
 /**
  * Backfills a chunk of older days that haven't been fetched yet (daily + hourly).
@@ -37,20 +37,20 @@ class SyncDailyStatsJob extends BaseJob
         $startTime = microtime(true);
         Craft::info(
             "SyncDailyStatsJob starting: websiteId={$this->websiteId}, offsets={$this->startOffset}..{$this->endOffset}.",
-            'umami-is'
+            'observatory'
         );
 
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
 
         try {
             $daySpecs = $plugin->sync->findUnsyncedDaySpecs($this->websiteId, $this->startOffset, $this->endOffset);
 
             if (empty($daySpecs)) {
-                Craft::info('SyncDailyStatsJob: all days in chunk already synced.', 'umami-is');
+                Craft::info('SyncDailyStatsJob: all days in chunk already synced.', 'observatory');
                 return;
             }
 
-            Craft::info('SyncDailyStatsJob: fetching ' . \count($daySpecs) . ' unsynced day(s).', 'umami-is');
+            Craft::info('SyncDailyStatsJob: fetching ' . \count($daySpecs) . ' unsynced day(s).', 'observatory');
 
             $daily = $plugin->sync->fetchAndStoreDailyStats(
                 $daySpecs,
@@ -66,7 +66,7 @@ class SyncDailyStatsJob extends BaseJob
             Craft::info(
                 "SyncDailyStatsJob finished: daily(synced={$daily['synced']}, failed={$daily['failed']}), " .
                 "hourly(synced={$hourly['synced']}, failed={$hourly['failed']}), elapsed={$elapsed}s.",
-                'umami-is'
+                'observatory'
             );
         } finally {
             $plugin->sync->resetAutoSyncTimeGuard($this->websiteId);
@@ -75,6 +75,6 @@ class SyncDailyStatsJob extends BaseJob
 
     protected function defaultDescription(): ?string
     {
-        return Craft::t('umami-is', 'Backfilling missing analytics daily stats');
+        return Craft::t('observatory', 'Backfilling missing analytics daily stats');
     }
 }

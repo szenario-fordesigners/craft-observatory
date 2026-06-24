@@ -1,7 +1,7 @@
 {% extends "_layouts/cp" %}
 
-{% set title = "Umami Analytics" %}
-{% set plugin = craft.app.plugins.getPlugin('umami-is') %}
+{% set title = "Observatory" %}
+{% set plugin = craft.app.plugins.getPlugin('observatory') %}
 {% do plugin.sync.autoSyncMissingDays() %}
 
 {% set props = {
@@ -10,7 +10,7 @@
 } %}
 
 {% block content %}
-	{% do view.registerAssetBundle("szenario\\craftumamiis\\assetbundles\\craftumamiiscp\\CraftUmamiIsCpAsset") %}
+	{% do view.registerAssetBundle("szenario\\craftobservatory\\assetbundles\\craftobservatorycp\\CraftObservatoryCpAsset") %}
 
-	<div id="umami-is-cp-app" data-props="{{ props|json_encode|escape('html_attr') }}"></div>
+	<div id="observatory-cp-app" data-props="{{ props|json_encode|escape('html_attr') }}"></div>
 {% endblock %}

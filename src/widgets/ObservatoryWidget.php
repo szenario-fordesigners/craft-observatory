@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis\widgets;
+namespace szenario\craftobservatory\widgets;
 
 use craft\base\Widget;
 
@@ -10,15 +10,15 @@ use craft\base\Widget;
  * 
  * Please remove this widget from your Craft Dashboard and then this file can be deleted.
  */
-class UmamiIsWidget extends Widget
+class ObservatoryWidget extends Widget
 {
     public static function displayName(): string
     {
-        return 'Umami.is (Legacy - Please Remove)';
+        return 'Observatory (Legacy - Please Remove)';
     }
 
     public function getBodyHtml(): ?string
     {
-        return '<div style="padding: 20px; color: red;">This is an old widget that has been replaced. Please delete this widget from your dashboard and add the new "Umami.is Visitors", "World Map", or "Referrers" widgets instead.</div>';
+        return '<div style="padding: 20px; color: red;">This is an old widget that has been replaced. Please delete this widget from your dashboard and add the new "Observatory Visitors", "World Map", or "Referrers" widgets instead.</div>';
     }
 }

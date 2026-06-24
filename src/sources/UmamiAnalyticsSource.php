@@ -1,12 +1,12 @@
 <?php
 
-namespace szenario\craftumamiis\sources;
+namespace szenario\craftobservatory\sources;
 
 use Craft;
 use craft\base\Component;
 use craft\helpers\App;
-use szenario\craftumamiis\services\UmamiClient;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\services\UmamiClient;
+use szenario\craftobservatory\Observatory;
 
 /**
  * Legacy analytics source backed by the original Umami API client.
@@ -32,7 +32,7 @@ class UmamiAnalyticsSource extends Component implements AnalyticsSourceInterface
      */
     public function getStatus(): array
     {
-        return UmamiIs::getInstance()->client->getStatus() + [
+        return Observatory::getInstance()->client->getStatus() + [
             'source' => 'umami',
         ];
     }
@@ -42,7 +42,7 @@ class UmamiAnalyticsSource extends Component implements AnalyticsSourceInterface
      */
     public function getStorageKey(): ?string
     {
-        $websiteId = App::parseEnv(UmamiIs::getInstance()->getSettings()->umamiWebsiteId);
+        $websiteId = App::parseEnv(Observatory::getInstance()->getSettings()->umamiWebsiteId);
 
         return empty($websiteId) ? null : "umami:{$websiteId}";
     }

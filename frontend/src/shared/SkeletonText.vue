@@ -5,5 +5,5 @@ defineProps<{
 </script>
 
 <template>
-  <span class="umami-skeleton" :class="variant ? `umami-skeleton--${variant}` : null"></span>
+  <span class="observatory-skeleton" :class="variant ? `observatory-skeleton--${variant}` : null"></span>
 </template>

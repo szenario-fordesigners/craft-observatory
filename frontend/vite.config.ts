@@ -27,7 +27,7 @@ export default defineConfig({
       entry: fileURLToPath(
         new URL(target === 'widget' ? './src/widget.ts' : './src/cp.ts', import.meta.url),
       ),
-      name: target === 'widget' ? 'UmamiIsApp' : 'UmamiIsCpApp',
+      name: target === 'widget' ? 'ObservatoryApp' : 'ObservatoryCpApp',
       formats: ['iife'],
       fileName: () => (target === 'widget' ? 'widget.js' : 'cp.js'),
     },
@@ -39,8 +39,8 @@ export default defineConfig({
     },
     outDir:
       target === 'widget'
-        ? '../src/assetbundles/craftumamiiswidget/dist'
-        : '../src/assetbundles/craftumamiiscp/dist',
+        ? '../src/assetbundles/craftobservatorywidget/dist'
+        : '../src/assetbundles/craftobservatorycp/dist',
     emptyOutDir: true,
 
     sourcemap: nodeEnv !== 'production',

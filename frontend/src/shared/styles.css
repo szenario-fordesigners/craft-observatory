@@ -1,19 +1,19 @@
 :root {
-  --umami-bg: #eeebb0;
-  --umami-fg: #72715a;
-  --umami-bar-bottom: #d8d6ab;
+  --observatory-bg: #eeebb0;
+  --observatory-fg: #72715a;
+  --observatory-bar-bottom: #d8d6ab;
 }
 
-.pane:has(.umami-widget) {
-  background-color: var(--umami-bg) !important;
+.pane:has(.observatory-widget) {
+  background-color: var(--observatory-bg) !important;
   border-radius: 1.25rem !important;
   container-type: inline-size;
-  container-name: umami-pane;
+  container-name: observatory-pane;
 }
 
-.umami-widget {
+.observatory-widget {
   width: 100%;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   font-family: 'Arial', sans-serif;
   display: flex;
   flex-direction: column;
@@ -21,43 +21,43 @@
   padding-inline: 1rem;
 }
 
-.umami-widget__divider {
+.observatory-widget__divider {
   border: 0;
-  border-top: 1px solid var(--umami-fg);
+  border-top: 1px solid var(--observatory-fg);
   opacity: 0.45;
   margin: 0;
 }
 
-.umami-widget__footer {
+.observatory-widget__footer {
   text-align: right;
   font-size: 0.75rem;
   opacity: 0.7;
 }
 
-.umami-skeleton {
+.observatory-skeleton {
   display: inline-block;
   width: 100%;
   max-width: 8rem;
   height: 0.75em;
   border-radius: 3px;
-  background-color: var(--umami-fg);
+  background-color: var(--observatory-fg);
   opacity: 0.45;
-  animation: umami-text-pulse 1.4s ease-in-out infinite;
+  animation: observatory-text-pulse 1.4s ease-in-out infinite;
   vertical-align: middle;
 }
 
-.umami-skeleton--total {
+.observatory-skeleton--total {
   height: 0.7em;
   max-width: 6ch;
 }
 
-.umami-skeleton--narrow {
+.observatory-skeleton--narrow {
   max-width: 1.75rem;
   height: 0.7em;
   margin: 0 auto;
 }
 
-@keyframes umami-bar-pulse {
+@keyframes observatory-bar-pulse {
   0%,
   100% {
     opacity: 1;
@@ -67,7 +67,7 @@
   }
 }
 
-@keyframes umami-text-pulse {
+@keyframes observatory-text-pulse {
   0%,
   100% {
     opacity: 0.45;
@@ -77,23 +77,23 @@
   }
 }
 
-.umami-fade-enter-active,
-.umami-fade-leave-active {
+.observatory-fade-enter-active,
+.observatory-fade-leave-active {
   transition: opacity 0.4s ease;
   animation: none;
 }
 
-.umami-fade-enter-from,
-.umami-fade-leave-to {
+.observatory-fade-enter-from,
+.observatory-fade-leave-to {
   opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .umami-fade-enter-active,
-  .umami-fade-leave-active {
+  .observatory-fade-enter-active,
+  .observatory-fade-leave-active {
     transition: none;
   }
-  .umami-skeleton {
+  .observatory-skeleton {
     animation: none;
     opacity: 0.3;
   }

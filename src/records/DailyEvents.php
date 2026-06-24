@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis\records;
+namespace szenario\craftobservatory\records;
 
 use craft\db\ActiveRecord;
 
@@ -23,6 +23,6 @@ class DailyEvents extends ActiveRecord
      */
     public static function tableName(): string
     {
-        return '{{%umami_daily_events}}';
+        return '{{%observatory_daily_events}}';
     }
 }

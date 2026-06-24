@@ -1,16 +1,16 @@
 <?php
 
-namespace szenario\craftumamiis\widgets;
+namespace szenario\craftobservatory\widgets;
 
 use Craft;
 use craft\base\Widget;
-use szenario\craftumamiis\assetbundles\craftumamiiswidget\CraftUmamiIsWidgetAsset;
+use szenario\craftobservatory\assetbundles\craftobservatorywidget\CraftObservatoryWidgetAsset;
 
-class UmamiIsHeatmapWidget extends Widget
+class ObservatoryHeatmapWidget extends Widget
 {
     public static function displayName(): string
     {
-        return 'Umami.is Traffic Patterns';
+        return 'Observatory Traffic Patterns';
     }
 
     public static function isSelectable(): bool
@@ -25,9 +25,9 @@ class UmamiIsHeatmapWidget extends Widget
 
     public function getBodyHtml(): ?string
     {
-        Craft::$app->getView()->registerAssetBundle(CraftUmamiIsWidgetAsset::class);
+        Craft::$app->getView()->registerAssetBundle(CraftObservatoryWidgetAsset::class);
 
-        return Craft::$app->getView()->renderTemplate('umami-is/_widget-shell', [
+        return Craft::$app->getView()->renderTemplate('observatory/_widget-shell', [
             'widgetName' => 'heatmap',
             'props' => [],
         ]);

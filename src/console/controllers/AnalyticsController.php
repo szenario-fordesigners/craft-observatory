@@ -1,9 +1,9 @@
 <?php
 
-namespace szenario\craftumamiis\console\controllers;
+namespace szenario\craftobservatory\console\controllers;
 
 use craft\console\Controller;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\Observatory;
 
 class AnalyticsController extends Controller
 {
@@ -14,7 +14,7 @@ class AnalyticsController extends Controller
     {
         $this->stdout("Fetching active visitors...\n");
 
-        $visitors = UmamiIs::getInstance()->analytics->getLiveVisitors();
+        $visitors = Observatory::getInstance()->analytics->getLiveVisitors();
 
         if ($visitors !== null) {
             $this->stdout("Active visitors: {$visitors}\n");

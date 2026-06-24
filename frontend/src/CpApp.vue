@@ -4,7 +4,8 @@ import DateRangeSelector from '@/components/DateRangeSelector.vue';
 import HeatmapChart from '@/components/HeatmapChart.vue';
 import MetricList from '@/components/MetricList.vue';
 import StatsOverview from '@/components/StatsOverview.vue';
-import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
+import StatusNotice from '@/shared/StatusNotice.vue';
+import type { AnalyticsStatus } from '@/shared/analyticsTypes';
 import { useDateRange, type RangeValue } from '@/composables/useDateRange';
 import type { AnalyticsMetric, AnalyticsPageviews, AnalyticsStats } from '@/shared/analyticsTypes';
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
@@ -31,11 +32,11 @@ const locTab = ref<'country' | 'region' | 'city'>('country');
 const metricsData = ref<Record<string, AnalyticsMetric[]>>({});
 const metricsLoading = ref(false);
 
-const dashboardStatus = ref<UmamiStatus | null>(null);
-const heatmapStatus = ref<UmamiStatus | null>(null);
+const dashboardStatus = ref<AnalyticsStatus | null>(null);
+const heatmapStatus = ref<AnalyticsStatus | null>(null);
 
 // Show whichever status surfaced an error (dashboard fires first; heatmap is independent).
-const status = computed<UmamiStatus | null>(() => {
+const status = computed<AnalyticsStatus | null>(() => {
   for (const s of [dashboardStatus.value, heatmapStatus.value]) {
     if (s && (!s.configured || !s.apiKeyValid)) return s;
   }
@@ -46,7 +47,7 @@ interface DashboardDataResponse {
   pageviews?: AnalyticsPageviews | null;
   stats?: AnalyticsStats | null;
   metrics?: Record<string, AnalyticsMetric[]>;
-  _status?: UmamiStatus;
+  _status?: AnalyticsStatus;
 }
 
 let dashboardAbortController: AbortController | null = null;
@@ -64,7 +65,7 @@ const fetchDashboardData = async (includePageviews = true) => {
 
   try {
     const url = new URL(
-      window.Craft.getActionUrl('umami-is/dashboard/get-dashboard-data'),
+      window.Craft.getActionUrl('observatory/dashboard/get-dashboard-data'),
       window.location.origin,
     );
     url.searchParams.append('startAt', currentRange.value.startAt.toString());
@@ -118,7 +119,7 @@ interface HeatmapData {
   cells: { weekday: number; hour: number; visitors: number }[];
   maxVisitors: number;
   daysWithData: number;
-  _status?: UmamiStatus;
+  _status?: AnalyticsStatus;
 }
 
 const heatmapData = ref<HeatmapData | null>(null);
@@ -127,7 +128,7 @@ const heatmapLoading = ref(false);
 const fetchHeatmapData = async () => {
   heatmapLoading.value = true;
   try {
-    const url = window.Craft.getActionUrl('umami-is/dashboard/get-heatmap-data');
+    const url = window.Craft.getActionUrl('observatory/dashboard/get-heatmap-data');
     const response = await fetch(url, { headers: { Accept: 'application/json' } });
     if (response.ok) {
       const json = (await response.json()) as HeatmapData;
@@ -153,7 +154,7 @@ watch(
 </script>
 
 <template>
-  <div id="umami-is-wrapper" class="rounded-lg border border-gray-200 bg-white p-6">
+  <div id="observatory-wrapper" class="rounded-lg border border-gray-200 bg-white p-6">
     <StatusNotice :status="status" variant="cp" />
 
     <div class="mb-6 flex items-center justify-between">

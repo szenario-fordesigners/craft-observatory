@@ -1,22 +1,22 @@
 <?php
 
-namespace szenario\craftumamiis\widgets;
+namespace szenario\craftobservatory\widgets;
 
 use craft\base\Widget;
-use szenario\craftumamiis\assetbundles\craftumamiiswidget\CraftUmamiIsWidgetAsset;
+use szenario\craftobservatory\assetbundles\craftobservatorywidget\CraftObservatoryWidgetAsset;
 use Craft;
 
 /**
  * Top Events Widget
  */
-class UmamiIsEventsWidget extends Widget
+class ObservatoryEventsWidget extends Widget
 {
     /**
      * @inheritdoc
      */
     public static function displayName(): string
     {
-        return 'Umami.is Top Events';
+        return 'Observatory Top Events';
     }
 
     /**
@@ -40,9 +40,9 @@ class UmamiIsEventsWidget extends Widget
      */
     public function getBodyHtml(): ?string
     {
-        Craft::$app->getView()->registerAssetBundle(CraftUmamiIsWidgetAsset::class);
+        Craft::$app->getView()->registerAssetBundle(CraftObservatoryWidgetAsset::class);
 
-        return Craft::$app->getView()->renderTemplate('umami-is/_widget-shell', [
+        return Craft::$app->getView()->renderTemplate('observatory/_widget-shell', [
             'widgetName' => 'events',
             'props' => [],
         ]);

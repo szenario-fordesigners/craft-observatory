@@ -1,20 +1,20 @@
 <?php
 
-namespace szenario\craftumamiis\services;
+namespace szenario\craftobservatory\services;
 
 use Craft;
 use craft\base\Component;
 use craft\helpers\Db;
 use craft\helpers\StringHelper;
-use szenario\craftumamiis\helpers\UmamiTime;
-use szenario\craftumamiis\jobs\SyncDailyStatsJob;
-use szenario\craftumamiis\jobs\SyncRecentDaysJob;
-use szenario\craftumamiis\records\DailyStats;
-use szenario\craftumamiis\records\HourlyStats;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\helpers\AnalyticsTime;
+use szenario\craftobservatory\jobs\SyncDailyStatsJob;
+use szenario\craftobservatory\jobs\SyncRecentDaysJob;
+use szenario\craftobservatory\records\DailyStats;
+use szenario\craftobservatory\records\HourlyStats;
+use szenario\craftobservatory\Observatory;
 
 /**
- * Coordinates background syncing of historical Umami stats into the local DB.
+ * Coordinates background syncing of historical analytics stats into the local DB.
  *
  * Every closed day is fetched exactly once — a day is considered done once it has a
  * DailyStats row, and is never re-fetched. Today is never fetched (the live widget
@@ -39,10 +39,10 @@ class SyncCoordinator extends Component
      */
     public function autoSyncMissingDays(int $days = 30, int $throttleSeconds = 300): bool
     {
-        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
-            Craft::warning('autoSyncMissingDays skipped: no analytics storage key configured.', 'umami-is');
+            Craft::warning('autoSyncMissingDays skipped: no analytics storage key configured.', 'observatory');
             return false;
         }
 
@@ -58,14 +58,14 @@ class SyncCoordinator extends Component
         if (!$isFirstRun && !$timeGuardWasReset) {
             $lastAttemptKey = $this->_autoSyncLastAttemptCacheKey($websiteId);
             if ($cache->get($lastAttemptKey) !== false) {
-                Craft::debug("autoSyncMissingDays throttled: a sync was attempted within the last {$throttleSeconds}s.", 'umami-is');
+                Craft::debug("autoSyncMissingDays throttled: a sync was attempted within the last {$throttleSeconds}s.", 'observatory');
                 return false;
             }
 
             $lastUpdatedTs = (new \DateTime($lastUpdatedStr, new \DateTimeZone('UTC')))->getTimestamp();
             if (time() - $lastUpdatedTs < $throttleSeconds) {
                 $age = time() - $lastUpdatedTs;
-                Craft::debug("autoSyncMissingDays throttled: last sync {$age}s ago (window {$throttleSeconds}s).", 'umami-is');
+                Craft::debug("autoSyncMissingDays throttled: last sync {$age}s ago (window {$throttleSeconds}s).", 'observatory');
                 return false;
             }
         }
@@ -75,10 +75,10 @@ class SyncCoordinator extends Component
         // still allowed through when the pending coverage spans fewer days. The key
         // expires on its own after $throttleSeconds. Jobs reset the time guard, but not
         // this pending coverage guard, otherwise queued chunks could be duplicated.
-        $pendingKey = "umami_autosync_pending_{$websiteId}";
+        $pendingKey = "observatory_autosync_pending_{$websiteId}";
         $existingPending = $cache->get($pendingKey);
         if ($existingPending !== false && (int) $existingPending >= $days) {
-            Craft::debug("autoSyncMissingDays skipped: pending jobs already cover {$existingPending} day(s).", 'umami-is');
+            Craft::debug("autoSyncMissingDays skipped: pending jobs already cover {$existingPending} day(s).", 'observatory');
             return false;
         }
         $cache->set($pendingKey, $days, $throttleSeconds);
@@ -95,7 +95,7 @@ class SyncCoordinator extends Component
 
         // Fetch any unsynced days in the rolling recent window (daily + hourly + events).
         // Already-synced days are skipped — each day is fetched exactly once.
-        $recentDays = UmamiIs::EVENTS_CLOSED_DAYS;
+        $recentDays = Observatory::EVENTS_CLOSED_DAYS;
         $queue->push(new SyncRecentDaysJob([
             'websiteId' => $websiteId,
         ]));
@@ -115,7 +115,7 @@ class SyncCoordinator extends Component
 
         Craft::info(
             "Queued SyncRecentDaysJob + {$batchCount} SyncDailyStatsJob batch(es) for websiteId={$websiteId}, days={$days}.",
-            'umami-is'
+            'observatory'
         );
         return true;
     }
@@ -150,11 +150,11 @@ class SyncCoordinator extends Component
      */
     public function findUnsyncedDaySpecs(string $websiteId, int $startOffset, int $endOffset): array
     {
-        $todayStr = UmamiTime::dateOffset(0);
+        $todayStr = AnalyticsTime::dateOffset(0);
 
         $candidates = [];
         for ($i = $startOffset; $i <= $endOffset; $i++) {
-            $ds = UmamiTime::dateOffset($i);
+            $ds = AnalyticsTime::dateOffset($i);
             if ($ds !== $todayStr) {
                 $candidates[$ds] = true;
             }
@@ -176,7 +176,7 @@ class SyncCoordinator extends Component
 
         $specs = [];
         foreach (array_keys($candidates) as $ds) {
-            [$startAt, $endAt] = UmamiTime::dayBounds($ds);
+            [$startAt, $endAt] = AnalyticsTime::dayBounds($ds);
             $specs[] = ['date' => $ds, 'startAt' => $startAt, 'endAt' => $endAt];
         }
 
@@ -184,7 +184,7 @@ class SyncCoordinator extends Component
     }
 
     /**
-     * Fetches daily stats + metrics from Umami for the given day specs and persists them.
+     * Fetches daily stats + metrics from the analytics source for the given day specs and persists them.
      *
      * @param array<int,array{date:string,startAt:int,endAt:int}> $daySpecs
      * @param callable|null $onProgress fn(int $done, int $total): void — called after each day.
@@ -196,7 +196,7 @@ class SyncCoordinator extends Component
             return ['synced' => 0, 'failed' => 0];
         }
 
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
         $batch = $plugin->analytics->getDailyStatsAndBreakdownsBatch($daySpecs, $metricsTypes);
 
@@ -213,13 +213,13 @@ class SyncCoordinator extends Component
             if (empty($stats)) {
                 $failed++;
                 $reason = $errors ? implode('; ', $errors) : 'empty stats response';
-                Craft::warning("fetchAndStoreDailyStats: failed for {$ds} — {$reason}", 'umami-is');
+                Craft::warning("fetchAndStoreDailyStats: failed for {$ds} — {$reason}", 'observatory');
             } elseif ($this->syncDailyStats($ds, $stats, $row['metrics'] ?? [])) {
                 $synced++;
-                Craft::debug("fetchAndStoreDailyStats: saved {$ds}.", 'umami-is');
+                Craft::debug("fetchAndStoreDailyStats: saved {$ds}.", 'observatory');
             } else {
                 $failed++;
-                Craft::warning("fetchAndStoreDailyStats: DB save failed for {$ds}.", 'umami-is');
+                Craft::warning("fetchAndStoreDailyStats: DB save failed for {$ds}.", 'observatory');
             }
 
             $done++;
@@ -232,7 +232,7 @@ class SyncCoordinator extends Component
     }
 
     /**
-     * Fetches hourly pageviews from Umami for the given day specs and persists them.
+     * Fetches hourly pageviews from the analytics source for the given day specs and persists them.
      *
      * Days with no hourly rows (zero-traffic days) are a no-op and counted as neither
      * synced nor failed; `failed` reflects only days whose DB write actually failed.
@@ -247,7 +247,7 @@ class SyncCoordinator extends Component
             return ['synced' => 0, 'failed' => 0];
         }
 
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $hourlyBatch = $plugin->analytics->getHourlyPageviewsBatch($daySpecs);
 
         $total = \count($daySpecs);
@@ -273,7 +273,7 @@ class SyncCoordinator extends Component
     }
 
     /**
-     * Fetches top events from Umami for the given day specs and refreshes the local rows.
+     * Fetches top events from the analytics source for the given day specs and refreshes the local rows.
      * A failed fetch for a day leaves that day's existing rows intact rather than wiping them.
      *
      * @param array<int,array{date:string,startAt:int,endAt:int}> $daySpecs
@@ -285,7 +285,7 @@ class SyncCoordinator extends Component
             return ['synced' => 0, 'failed' => 0];
         }
 
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $eventsBatch = $plugin->analytics->getEventsBatch($daySpecs);
 
         $synced = 0;
@@ -294,7 +294,7 @@ class SyncCoordinator extends Component
             $ds = $day['date'];
             if (!\array_key_exists($ds, $eventsBatch)) {
                 $failed++;
-                Craft::warning("fetchAndStoreEvents: events fetch failed for {$ds} — leaving existing rows intact.", 'umami-is');
+                Craft::warning("fetchAndStoreEvents: events fetch failed for {$ds} — leaving existing rows intact.", 'observatory');
                 continue;
             }
             if ($this->syncDailyEvents($ds, $eventsBatch[$ds])) {
@@ -308,7 +308,7 @@ class SyncCoordinator extends Component
     }
 
     /**
-     * Saves daily stats retrieved from Umami into the local database.
+     * Saves daily stats retrieved from the analytics source into the local database.
      *
      * @param string $date Date in 'Y-m-d' format.
      * @param array $stats Raw stats array from the API.
@@ -316,7 +316,7 @@ class SyncCoordinator extends Component
      */
     public function syncDailyStats(string $date, array $stats, array $metrics = []): bool
     {
-        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             Craft::error('Cannot sync stats without an analytics storage key.', __METHOD__);
@@ -352,18 +352,18 @@ class SyncCoordinator extends Component
     }
 
     /**
-     * Replaces the umami_daily_events rows for a single date with the given top-events list.
+     * Replaces the observatory_daily_events rows for a single date with the given top-events list.
      *
      * Runs in a transaction so the day's rows are never partially updated. The delete
      * before insert keeps the write idempotent if the day is ever re-synced, but in
      * normal operation each day's events are fetched exactly once.
      *
      * @param string $date Date in 'Y-m-d' format.
-     * @param array<int,array{x:string,y:int|float}> $events Top events from Umami /metrics?type=event.
+     * @param array<int,array{x:string,y:int|float}> $events Top events from the analytics source.
      */
     public function syncDailyEvents(string $date, array $events): bool
     {
-        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             Craft::error('Cannot sync events without an analytics storage key.', __METHOD__);
@@ -375,7 +375,7 @@ class SyncCoordinator extends Component
 
         try {
             $db->createCommand()
-                ->delete('{{%umami_daily_events}}', [
+                ->delete('{{%observatory_daily_events}}', [
                     'websiteId' => $websiteId,
                     'date' => $date,
                 ])
@@ -402,7 +402,7 @@ class SyncCoordinator extends Component
             if (!empty($rows)) {
                 $db->createCommand()
                     ->batchInsert(
-                        '{{%umami_daily_events}}',
+                        '{{%observatory_daily_events}}',
                         ['websiteId', 'date', 'eventName', 'total', 'dateCreated', 'dateUpdated', 'uid'],
                         $rows
                     )
@@ -426,7 +426,7 @@ class SyncCoordinator extends Component
      */
     public function syncHourlyStats(string $date, array $hourlyRows): bool
     {
-        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             Craft::error('Cannot sync hourly stats without an analytics storage key.', __METHOD__);
@@ -472,7 +472,7 @@ class SyncCoordinator extends Component
      */
     private function _autoSyncLastAttemptCacheKey(string $websiteId): string
     {
-        return "umami_autosync_last_attempt_{$websiteId}";
+        return "observatory_autosync_last_attempt_{$websiteId}";
     }
 
     /**
@@ -483,6 +483,6 @@ class SyncCoordinator extends Component
      */
     private function _autoSyncTimeGuardResetCacheKey(string $websiteId): string
     {
-        return "umami_autosync_time_guard_reset_{$websiteId}";
+        return "observatory_autosync_time_guard_reset_{$websiteId}";
     }
 }

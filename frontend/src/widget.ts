@@ -29,11 +29,11 @@ const mounted = new WeakSet<HTMLElement>();
 
 function mountWidget(el: HTMLElement): void {
   if (mounted.has(el)) return;
-  const name = el.dataset.umamiWidget;
+  const name = el.dataset.observatoryWidget;
   if (!name) return;
   const component = widgets[name];
   if (!component) {
-    console.warn(`Unknown umami widget: ${name}`);
+    console.warn(`Unknown observatory widget: ${name}`);
     return;
   }
   mounted.add(el);
@@ -42,7 +42,7 @@ function mountWidget(el: HTMLElement): void {
 }
 
 function mountAll(root: Document | HTMLElement): void {
-  (root as Element).querySelectorAll<HTMLElement>('[data-umami-widget]').forEach(mountWidget);
+  (root as Element).querySelectorAll<HTMLElement>('[data-observatory-widget]').forEach(mountWidget);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
-        if (node.dataset.umamiWidget) {
+        if (node.dataset.observatoryWidget) {
           mountWidget(node);
         } else {
           mountAll(node);

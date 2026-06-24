@@ -71,8 +71,8 @@ jobs:
                   TAG_NAME="${{ github.event.client_payload.tag }}"
 
                   # Force-add both built bundles (paths come from frontend/vite.config.ts).
-                  git add -f src/assetbundles/craftumamiiswidget/dist
-                  git add -f src/assetbundles/craftumamiiscp/dist
+                  git add -f src/assetbundles/craftobservatorywidget/dist
+                  git add -f src/assetbundles/craftobservatorycp/dist
 
                   git commit -m "Build assets for $TAG_NAME"
 

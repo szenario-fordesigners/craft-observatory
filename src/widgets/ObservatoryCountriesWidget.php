@@ -1,23 +1,23 @@
 <?php
 
-namespace szenario\craftumamiis\widgets;
+namespace szenario\craftobservatory\widgets;
 
 use craft\base\Widget;
-use szenario\craftumamiis\assetbundles\craftumamiiswidget\CraftUmamiIsWidgetAsset;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\assetbundles\craftobservatorywidget\CraftObservatoryWidgetAsset;
+use szenario\craftobservatory\Observatory;
 use Craft;
 
 /**
  * Top Countries Widget
  */
-class UmamiIsCountriesWidget extends Widget
+class ObservatoryCountriesWidget extends Widget
 {
     /**
      * @inheritdoc
      */
     public static function displayName(): string
     {
-        return 'Umami.is Top Countries';
+        return 'Observatory Top Countries';
     }
 
     /**
@@ -41,9 +41,9 @@ class UmamiIsCountriesWidget extends Widget
      */
     public function getBodyHtml(): ?string
     {
-        Craft::$app->getView()->registerAssetBundle(CraftUmamiIsWidgetAsset::class);
+        Craft::$app->getView()->registerAssetBundle(CraftObservatoryWidgetAsset::class);
 
-        return Craft::$app->getView()->renderTemplate('umami-is/_widget-shell', [
+        return Craft::$app->getView()->renderTemplate('observatory/_widget-shell', [
             'widgetName' => 'countries',
             'props' => [
                 'locale' => Craft::$app->getLocale()->id,

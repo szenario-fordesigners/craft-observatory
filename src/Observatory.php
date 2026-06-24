@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis;
+namespace szenario\craftobservatory;
 
 use Craft;
 use craft\base\Model;
@@ -10,29 +10,29 @@ use craft\helpers\App;
 use craft\log\MonologTarget;
 use craft\services\Dashboard;
 use Psr\Log\LogLevel;
-use szenario\craftumamiis\models\Settings;
-use szenario\craftumamiis\services\Analytics;
-use szenario\craftumamiis\services\StatsReport;
-use szenario\craftumamiis\services\SyncCoordinator;
-use szenario\craftumamiis\services\UmamiClient;
-use szenario\craftumamiis\widgets\UmamiIsHeatmapWidget;
-use szenario\craftumamiis\widgets\UmamiIsVisitorsWidget;
+use szenario\craftobservatory\models\Settings;
+use szenario\craftobservatory\services\Analytics;
+use szenario\craftobservatory\services\StatsReport;
+use szenario\craftobservatory\services\SyncCoordinator;
+use szenario\craftobservatory\services\UmamiClient;
+use szenario\craftobservatory\widgets\ObservatoryHeatmapWidget;
+use szenario\craftobservatory\widgets\ObservatoryVisitorsWidget;
 use yii\base\Event;
 
 /**
- * umami plugin
+ * Observatory plugin
  *
  * @property-read Analytics $analytics
  * @property-read UmamiClient $client
  * @property-read StatsReport $stats
  * @property-read SyncCoordinator $sync
- * @method static UmamiIs getInstance()
+ * @method static Observatory getInstance()
  * @method Settings getSettings()
  * @author szenario
  * @copyright szenario
  * @license https://craftcms.github.io/license/ Craft License
  */
-class UmamiIs extends Plugin
+class Observatory extends Plugin
 {
     /**
      * Number of closed (pre-today) days the events widget reads from the local mirror.
@@ -77,7 +77,7 @@ class UmamiIs extends Plugin
 
     protected function settingsHtml(): ?string
     {
-        return Craft::$app->view->renderTemplate('umami-is/_settings.twig', [
+        return Craft::$app->view->renderTemplate('observatory/_settings.twig', [
             'plugin' => $this,
             'settings' => $this->getSettings(),
         ]);
@@ -89,18 +89,18 @@ class UmamiIs extends Plugin
         $targets = $log->targets;
 
         foreach ($targets as $target) {
-            if ($target instanceof MonologTarget && $target->name === 'umami-is') {
+            if ($target instanceof MonologTarget && $target->name === 'observatory') {
                 return;
             }
         }
 
         $targets[] = Craft::createObject([
             'class' => MonologTarget::class,
-            'name' => 'umami-is',
+            'name' => 'observatory',
             'extractExceptionTrace' => !App::devMode(),
             'allowLineBreaks' => App::devMode(),
             'level' => App::devMode() ? LogLevel::DEBUG : LogLevel::INFO,
-            'categories' => ['umami-is'],
+            'categories' => ['observatory'],
             'logContext' => App::devMode(),
         ]);
 
@@ -112,15 +112,15 @@ class UmamiIs extends Plugin
         // Register event handlers here ...
         // (see https://craftcms.com/docs/5.x/extend/events.html to get started)
         Event::on(Dashboard::class, Dashboard::EVENT_REGISTER_WIDGET_TYPES, function (RegisterComponentTypesEvent $event) {
-            $event->types[] = UmamiIsVisitorsWidget::class;
-            $event->types[] = UmamiIsHeatmapWidget::class;
-            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsWorldMapWidget::class;
-            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsReferrersWidget::class;
-            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsCountriesWidget::class;
-            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsDevicesWidget::class;
-            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsEventsWidget::class;
-            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsLiveVisitorsWidget::class;
-            $event->types[] = \szenario\craftumamiis\widgets\UmamiIsUsageWidget::class;
+            $event->types[] = ObservatoryVisitorsWidget::class;
+            $event->types[] = ObservatoryHeatmapWidget::class;
+            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryWorldMapWidget::class;
+            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryReferrersWidget::class;
+            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryCountriesWidget::class;
+            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryDevicesWidget::class;
+            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryEventsWidget::class;
+            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryLiveVisitorsWidget::class;
+            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryUsageWidget::class;
         });
     }
 }

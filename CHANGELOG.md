@@ -1,4 +1,4 @@
-# Release Notes for umami
+# Release Notes for Observatory
 
 ## 1.0.0
 - Initial release

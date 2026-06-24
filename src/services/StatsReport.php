@@ -1,19 +1,19 @@
 <?php
 
-namespace szenario\craftumamiis\services;
+namespace szenario\craftobservatory\services;
 
 use craft\base\Component;
-use szenario\craftumamiis\helpers\UmamiTime;
-use szenario\craftumamiis\records\DailyStats;
-use szenario\craftumamiis\records\HourlyStats;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\helpers\AnalyticsTime;
+use szenario\craftobservatory\records\DailyStats;
+use szenario\craftobservatory\records\HourlyStats;
+use szenario\craftobservatory\Observatory;
 
 /**
  * Builds the daily-stats report consumed by the CP page and dashboard widget.
  *
  * Historical days come from the local DB; missing rows surface as 'Queued' placeholders
  * and are filled by SyncCoordinator's background job. Today is fetched live through
- * UmamiClient because it is still accumulating.
+ * the configured analytics source because it is still accumulating.
  */
 class StatsReport extends Component
 {
@@ -21,7 +21,7 @@ class StatsReport extends Component
      * Compact summary used by the dashboard widget: 7-day visitor totals with prior-period
      * comparison, daily visitor series, and top country/referrer/browser.
      *
-     * Lean on UmamiClient's response cache (5-min TTL) — endAt is bucketed to a 5-min
+     * Lean on the analytics response cache (5-min TTL) — endAt is bucketed to a 5-min
      * boundary so cache keys stabilize within the window.
      *
      * @return array{
@@ -48,7 +48,7 @@ class StatsReport extends Component
             'top' => ['country' => null, 'referrer' => null, 'browser' => null],
         ];
 
-        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             return $empty;
@@ -58,13 +58,13 @@ class StatsReport extends Component
         $nowBucketed = (int) (floor(time() / $bucketSec) * $bucketSec * 1000);
 
         // Last 7 days: midnight 6 days ago → now (bucketed).
-        [$weekStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(6));
+        [$weekStart, ] = AnalyticsTime::dayBounds(AnalyticsTime::dateOffset(6));
 
         // Prior 7 days: 14 days ago → 7 days ago (inclusive). Fixed window — cached effectively forever.
-        [$priorStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(13));
-        [, $priorEnd] = UmamiTime::dayBounds(UmamiTime::dateOffset(7));
+        [$priorStart, ] = AnalyticsTime::dayBounds(AnalyticsTime::dateOffset(13));
+        [, $priorEnd] = AnalyticsTime::dayBounds(AnalyticsTime::dateOffset(7));
 
-        $analytics = UmamiIs::getInstance()->analytics;
+        $analytics = Observatory::getInstance()->analytics;
 
         $weekStats = $analytics->getTotals($weekStart, $nowBucketed, $bucketSec) ?? [];
         $priorStats = $analytics->getTotals($priorStart, $priorEnd, $bucketSec) ?? [];
@@ -139,7 +139,7 @@ class StatsReport extends Component
             '_syncing' => false,
         ];
 
-        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             return $empty;
@@ -149,13 +149,13 @@ class StatsReport extends Component
         $nowBucketed = (int) (floor(time() / $bucketSec) * $bucketSec * 1000);
 
         // Last 7 days: midnight 6 days ago → now (bucketed).
-        [$weekStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(6));
+        [$weekStart, ] = AnalyticsTime::dayBounds(AnalyticsTime::dateOffset(6));
 
         // Prior 7 days: 14 days ago → 7 days ago. Fixed window — cached effectively forever.
-        [$priorStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(13));
-        [, $priorEnd] = UmamiTime::dayBounds(UmamiTime::dateOffset(7));
+        [$priorStart, ] = AnalyticsTime::dayBounds(AnalyticsTime::dateOffset(13));
+        [, $priorEnd] = AnalyticsTime::dayBounds(AnalyticsTime::dateOffset(7));
 
-        $analytics = UmamiIs::getInstance()->analytics;
+        $analytics = Observatory::getInstance()->analytics;
         $weekStats = $analytics->getTotals($weekStart, $nowBucketed, $bucketSec) ?? [];
         $priorStats = $analytics->getTotals($priorStart, $priorEnd, $bucketSec) ?? [];
 
@@ -229,7 +229,7 @@ class StatsReport extends Component
      */
     public function getHeatmapData(int $lookbackDays = 90): array
     {
-        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
 
         $empty = ['cells' => [], 'maxVisitors' => 0.0, 'daysWithData' => 0];
 
@@ -237,7 +237,7 @@ class StatsReport extends Component
             return $empty;
         }
 
-        $startDate = UmamiTime::dateOffset($lookbackDays);
+        $startDate = AnalyticsTime::dateOffset($lookbackDays);
 
         /** @var HourlyStats[] $rows */
         $rows = HourlyStats::find()
@@ -290,17 +290,17 @@ class StatsReport extends Component
      */
     public function getDailyStatsReport(int $days = 30): array
     {
-        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             return [];
         }
 
         $report = [];
-        $todayStr = UmamiTime::dateOffset(0);
+        $todayStr = AnalyticsTime::dateOffset(0);
 
         // Pre-fetch all available DB records for the requested timeframe
-        $startDateStr = UmamiTime::dateOffset($days - 1);
+        $startDateStr = AnalyticsTime::dateOffset($days - 1);
 
         $dbRecords = DailyStats::find()
             ->where(['websiteId' => $websiteId])
@@ -313,7 +313,7 @@ class StatsReport extends Component
         $todayEndAt = (int) (floor(time() / $todayBucketSec) * $todayBucketSec * 1000);
 
         for ($i = 0; $i < $days; $i++) {
-            $dateStr = UmamiTime::dateOffset($i);
+            $dateStr = AnalyticsTime::dateOffset($i);
             $isToday = ($dateStr === $todayStr);
 
             if (!$isToday && isset($dbRecords[$dateStr])) {
@@ -328,8 +328,8 @@ class StatsReport extends Component
                     'source' => 'DB',
                 ];
             } elseif ($isToday) {
-                [$startAt, ] = UmamiTime::dayBounds($dateStr);
-                $stats = UmamiIs::getInstance()->analytics->getTotals($startAt, $todayEndAt, $todayBucketSec);
+                [$startAt, ] = AnalyticsTime::dayBounds($dateStr);
+                $stats = Observatory::getInstance()->analytics->getTotals($startAt, $todayEndAt, $todayBucketSec);
 
                 $report[] = [
                     'date' => $dateStr,

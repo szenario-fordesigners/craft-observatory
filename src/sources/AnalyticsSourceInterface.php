@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis\sources;
+namespace szenario\craftobservatory\sources;
 
 /**
  * Contract for analytics providers that can power the plugin's reports.

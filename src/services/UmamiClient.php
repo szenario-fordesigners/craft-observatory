@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis\services;
+namespace szenario\craftobservatory\services;
 
 use Craft;
 use craft\base\Component;
@@ -9,7 +9,7 @@ use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Pool;
 use GuzzleHttp\Psr7\Request;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\Observatory;
 
 /**
  * HTTP transport for the Umami website API.
@@ -31,7 +31,7 @@ class UmamiClient extends Component
      */
     public function getStatus(): array
     {
-        $settings = UmamiIs::getInstance()->getSettings();
+        $settings = Observatory::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
         $url = App::parseEnv($settings->umamiUrl);
         $apiKey = App::parseEnv($settings->umamiApiKey);
@@ -46,7 +46,7 @@ class UmamiClient extends Component
 
     private function authErrorCacheKey(string $websiteId): string
     {
-        return "umami_auth_error_{$websiteId}";
+        return "observatory_auth_error_{$websiteId}";
     }
 
     private function hasAuthError(string $websiteId): bool
@@ -78,7 +78,7 @@ class UmamiClient extends Component
      */
     private function getUmamiHttpContext(float $timeout = 5.0): ?array
     {
-        $settings = UmamiIs::getInstance()->getSettings();
+        $settings = Observatory::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
         $url = rtrim(App::parseEnv($settings->umamiUrl), '/');
         $apiKey = App::parseEnv($settings->umamiApiKey);
@@ -270,13 +270,13 @@ class UmamiClient extends Component
      */
     public function getActiveVisitors(): ?int
     {
-        $settings = UmamiIs::getInstance()->getSettings();
+        $settings = Observatory::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
         if (empty($websiteId)) {
             return null;
         }
 
-        $body = $this->umamiGet('/active', [], "umami_active_visitors_{$websiteId}", 60);
+        $body = $this->umamiGet('/active', [], "observatory_active_visitors_{$websiteId}", 60);
         return isset($body['visitors']) ? (int) $body['visitors'] : null;
     }
 
@@ -287,7 +287,7 @@ class UmamiClient extends Component
      */
     public function getStats(int $startAt, int $endAt, int $cacheDuration = 60): ?array
     {
-        $settings = UmamiIs::getInstance()->getSettings();
+        $settings = Observatory::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
         if (empty($websiteId)) {
             return null;
@@ -296,7 +296,7 @@ class UmamiClient extends Component
         return $this->umamiGet(
             '/stats',
             ['startAt' => $startAt, 'endAt' => $endAt],
-            "umami_stats_{$websiteId}_{$startAt}_{$endAt}",
+            "observatory_stats_{$websiteId}_{$startAt}_{$endAt}",
             $cacheDuration,
         );
     }
@@ -308,7 +308,7 @@ class UmamiClient extends Component
      */
     public function getPageviews(int $startAt, int $endAt, string $unit = 'day'): ?array
     {
-        $settings = UmamiIs::getInstance()->getSettings();
+        $settings = Observatory::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
         if (empty($websiteId)) {
             return null;
@@ -317,7 +317,7 @@ class UmamiClient extends Component
         $body = $this->umamiGet(
             '/pageviews',
             ['startAt' => $startAt, 'endAt' => $endAt, 'unit' => $unit],
-            "umami_pageviews_{$websiteId}_{$startAt}_{$endAt}_{$unit}",
+            "observatory_pageviews_{$websiteId}_{$startAt}_{$endAt}_{$unit}",
             60,
         );
         return isset($body['pageviews']) ? $body : null;
@@ -348,7 +348,7 @@ class UmamiClient extends Component
         $missing = [];
 
         foreach ($types as $type) {
-            $cacheKey = "umami_metrics_{$websiteId}_{$startAt}_{$endAt}_{$type}";
+            $cacheKey = "observatory_metrics_{$websiteId}_{$startAt}_{$endAt}_{$type}";
             $cached = $cache->get($cacheKey);
             if ($cached !== false && \is_array($cached)) {
                 $results[$type] = $cached;
@@ -559,7 +559,7 @@ class UmamiClient extends Component
      */
     public function getMetrics(int $startAt, int $endAt, string $type): ?array
     {
-        $settings = UmamiIs::getInstance()->getSettings();
+        $settings = Observatory::getInstance()->getSettings();
         $websiteId = App::parseEnv($settings->umamiWebsiteId);
         if (empty($websiteId)) {
             return null;
@@ -568,7 +568,7 @@ class UmamiClient extends Component
         return $this->umamiGet(
             '/metrics',
             ['startAt' => $startAt, 'endAt' => $endAt, 'type' => $type],
-            "umami_metrics_{$websiteId}_{$startAt}_{$endAt}_{$type}",
+            "observatory_metrics_{$websiteId}_{$startAt}_{$endAt}_{$type}",
             300,
         );
     }

@@ -4,8 +4,6 @@ export interface AnalyticsStatus {
   source?: string;
 }
 
-export type UmamiStatus = AnalyticsStatus;
-
 export interface AnalyticsMetric {
   x: string;
   y: number;

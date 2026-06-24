@@ -1,8 +1,8 @@
-# umami
+# Observatory
 
-umami.is analytics chart in the craft cms dashboard.
+Analytics dashboards and widgets for Craft CMS.
 
-umami.is docs: https://umami.is/docs/api/website-stats
+Supports PostHog as the primary analytics source, with legacy Umami support still available.
 
 
 
@@ -16,7 +16,7 @@ You can install this plugin from the Plugin Store or with Composer.
 
 #### From the Plugin Store
 
-Go to the Plugin Store in your project’s Control Panel and search for “umami”. Then press “Install”.
+Go to the Plugin Store in your project’s Control Panel and search for “Observatory”. Then press “Install”.
 
 #### With Composer
 
@@ -27,8 +27,8 @@ Open your terminal and run the following commands:
 cd /path/to/my-project.test
 
 # tell Composer to load the plugin
-composer require szenario/craft-umami-is
+composer require szenario/craft-observatory
 
 # tell Craft to install the plugin
-./craft plugin/install umami-is
+./craft plugin/install observatory
 ```

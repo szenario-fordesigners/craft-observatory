@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis\models;
+namespace szenario\craftobservatory\models;
 
 use craft\base\Model;
 

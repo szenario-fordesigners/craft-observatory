@@ -1,13 +1,13 @@
 <?php
 
-namespace szenario\craftumamiis\sources;
+namespace szenario\craftobservatory\sources;
 
 use Craft;
 use craft\base\Component;
 use craft\helpers\App;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\Observatory;
 
 /**
  * Analytics source backed by PostHog's Query API.
@@ -25,7 +25,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      */
     public function getStatus(): array
     {
-        $settings = UmamiIs::getInstance()->getSettings();
+        $settings = Observatory::getInstance()->getSettings();
         $host = App::parseEnv($settings->posthogHost);
         $projectId = App::parseEnv($settings->posthogProjectId);
         $apiKey = App::parseEnv($settings->posthogPersonalApiKey);
@@ -44,7 +44,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      */
     public function getStorageKey(): ?string
     {
-        $projectId = App::parseEnv(UmamiIs::getInstance()->getSettings()->posthogProjectId);
+        $projectId = App::parseEnv(Observatory::getInstance()->getSettings()->posthogProjectId);
 
         return empty($projectId) ? null : "posthog:{$projectId}";
     }
@@ -381,7 +381,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      */
     private function _httpContext(): ?array
     {
-        $settings = UmamiIs::getInstance()->getSettings();
+        $settings = Observatory::getInstance()->getSettings();
         $host = rtrim(App::parseEnv($settings->posthogHost), '/');
         $projectId = App::parseEnv($settings->posthogProjectId);
         $apiKey = App::parseEnv($settings->posthogPersonalApiKey);

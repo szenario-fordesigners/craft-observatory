@@ -1,15 +1,15 @@
 <?php
 
-namespace szenario\craftumamiis\services;
+namespace szenario\craftobservatory\services;
 
 use Craft;
 use craft\base\Component;
 use craft\helpers\App;
-use szenario\craftumamiis\models\Settings;
-use szenario\craftumamiis\sources\AnalyticsSourceInterface;
-use szenario\craftumamiis\sources\PostHogAnalyticsSource;
-use szenario\craftumamiis\sources\UmamiAnalyticsSource;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\models\Settings;
+use szenario\craftobservatory\sources\AnalyticsSourceInterface;
+use szenario\craftobservatory\sources\PostHogAnalyticsSource;
+use szenario\craftobservatory\sources\UmamiAnalyticsSource;
+use szenario\craftobservatory\Observatory;
 
 /**
  * Selects and exposes the configured analytics source.
@@ -42,7 +42,7 @@ class Analytics extends Component implements AnalyticsSourceInterface
             return $this->_source;
         }
 
-        $settings = UmamiIs::getInstance()->getSettings();
+        $settings = Observatory::getInstance()->getSettings();
         $source = App::parseEnv($settings->analyticsSource) ?: Settings::SOURCE_POSTHOG;
 
         $class = match ($source) {

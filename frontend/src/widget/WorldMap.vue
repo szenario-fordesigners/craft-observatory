@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import CountryMap from '@/shared/CountryMap.vue';
-import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
+import StatusNotice from '@/shared/StatusNotice.vue';
+import type { AnalyticsStatus } from '@/shared/analyticsTypes';
 import { useWidgetData } from '@/shared/useWidgetData';
 
 interface MetricEntry {
@@ -11,16 +12,16 @@ interface MetricEntry {
 
 interface MetricsResponse {
   data: MetricEntry[];
-  _status?: UmamiStatus;
+  _status?: AnalyticsStatus;
 }
 
 defineProps<{
   locale?: string;
 }>();
 
-const hasError = (s: UmamiStatus | undefined): boolean => !!s && (!s.configured || !s.apiKeyValid);
+const hasError = (s: AnalyticsStatus | undefined): boolean => !!s && (!s.configured || !s.apiKeyValid);
 
-const { data } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?type=country');
+const { data } = useWidgetData<MetricsResponse>('observatory/dashboard/get-metrics?type=country');
 </script>
 
 <template>
@@ -28,14 +29,14 @@ const { data } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?
     <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
 
     <template v-else>
-      <div class="umami-world-map__head">
-        <div class="umami-world-map__col">
-          <div class="umami-world-map__header">visitors by country</div>
-          <div class="umami-world-map__subheader">last 7 days</div>
+      <div class="observatory-world-map__head">
+        <div class="observatory-world-map__col">
+          <div class="observatory-world-map__header">visitors by country</div>
+          <div class="observatory-world-map__subheader">last 7 days</div>
         </div>
       </div>
 
-      <hr class="umami-widget__divider" />
+      <hr class="observatory-widget__divider" />
 
       <CountryMap :countries="data?.data" :locale="locale" />
     </template>
@@ -43,30 +44,30 @@ const { data } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?
 </template>
 
 <style scoped>
-.umami-world-map__head {
+.observatory-world-map__head {
   display: flex;
   justify-content: space-between;
   align-items: start;
 }
 
-.umami-world-map__col {
+.observatory-world-map__col {
   display: flex;
   flex-direction: column;
 }
 
-.umami-world-map__header {
+.observatory-world-map__header {
   font-size: 1.25rem;
   margin-bottom: 0.25rem;
 }
 
-.umami-world-map__subheader {
+.observatory-world-map__subheader {
   font-size: 0.95rem;
   opacity: 0.7;
 }
 </style>
 
 <style>
-div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsWorldMapWidget'] .widget-heading {
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryWorldMapWidget'] .widget-heading {
   display: none;
 }
 </style>

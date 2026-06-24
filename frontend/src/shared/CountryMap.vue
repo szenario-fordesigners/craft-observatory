@@ -48,10 +48,10 @@ const areaId = (d: MapArea) => d.id;
 
 const areaColor = (d: MapArea | undefined) => {
   if (!d || d.y === 0 || maxVisitors.value === 0) {
-    return 'color-mix(in srgb, var(--umami-fg) 10%, transparent)';
+    return 'color-mix(in srgb, var(--observatory-fg) 10%, transparent)';
   }
   const ratio = 0.3 + (d.y / maxVisitors.value) * 0.7;
-  return `color-mix(in srgb, var(--umami-fg) ${Math.round(ratio * 100)}%, transparent)`;
+  return `color-mix(in srgb, var(--observatory-fg) ${Math.round(ratio * 100)}%, transparent)`;
 };
 
 const tooltipTriggers = {
@@ -84,31 +84,31 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="containerRef" class="umami-country-map">
+  <div ref="containerRef" class="observatory-country-map">
     <CrossFade>
-      <div v-if="countries" key="real-map" class="umami-country-map__inner">
+      <div v-if="countries" key="real-map" class="observatory-country-map__inner">
         <VisSingleContainer :data="{ areas: mapData }" :width="containerWidth || undefined">
           <VisTopoJSONMap
             :topojson="WorldMapTopoJSON"
             :areaId="areaId"
             :areaColor="areaColor"
-            mapFeatureDefaultColor="color-mix(in srgb, var(--umami-fg) 10%, transparent)"
+            mapFeatureDefaultColor="color-mix(in srgb, var(--observatory-fg) 10%, transparent)"
             :strokeWidth="0.5"
-            strokeColor="var(--umami-bg)"
+            strokeColor="var(--observatory-bg)"
           />
           <VisTooltip :triggers="tooltipTriggers" />
         </VisSingleContainer>
       </div>
-      <div v-else key="skeleton-map" class="umami-country-map__skeleton">
-        <div class="umami-country-map__skeleton-inner"></div>
+      <div v-else key="skeleton-map" class="observatory-country-map__skeleton">
+        <div class="observatory-country-map__skeleton-inner"></div>
       </div>
     </CrossFade>
   </div>
 </template>
 
 <style scoped>
-.umami-country-map {
-  --vis-map-feature-color: color-mix(in srgb, var(--umami-fg) 10%, transparent);
+.observatory-country-map {
+  --vis-map-feature-color: color-mix(in srgb, var(--observatory-fg) 10%, transparent);
   width: 100%;
   aspect-ratio: 2 / 1;
   position: relative;
@@ -116,14 +116,14 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 
-.umami-country-map__inner {
+.observatory-country-map__inner {
   flex: 1;
   display: flex;
   width: 100%;
   height: 100%;
 }
 
-.umami-country-map__skeleton {
+.observatory-country-map__skeleton {
   width: 100%;
   height: 100%;
   display: flex;
@@ -131,33 +131,33 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
-.umami-country-map__skeleton-inner {
+.observatory-country-map__skeleton-inner {
   width: 100%;
   height: 100%;
-  background-color: color-mix(in srgb, var(--umami-fg) 10%, transparent);
+  background-color: color-mix(in srgb, var(--observatory-fg) 10%, transparent);
   border-radius: 4px;
-  animation: umami-bar-pulse 1.4s ease-in-out infinite;
+  animation: observatory-bar-pulse 1.4s ease-in-out infinite;
 }
 
 :deep(.vis-topojson-map) {
-  --vis-map-feature-color: color-mix(in srgb, var(--umami-fg) 10%, transparent);
+  --vis-map-feature-color: color-mix(in srgb, var(--observatory-fg) 10%, transparent);
 }
 
 :deep(.vis-topojson-map path) {
-  fill: color-mix(in srgb, var(--umami-fg) 10%, transparent);
+  fill: color-mix(in srgb, var(--observatory-fg) 10%, transparent);
   transition: fill 0.3s ease;
 }
 
 :deep(.vis-topojson-map path:hover) {
-  fill: var(--umami-fg) !important;
+  fill: var(--observatory-fg) !important;
 }
 </style>
 
 <style>
 /* Unovis appends tooltips to <body>, so they must be styled globally. */
 .vis-tooltip {
-  background-color: var(--umami-fg) !important;
-  color: var(--umami-bg) !important;
+  background-color: var(--observatory-fg) !important;
+  color: var(--observatory-bg) !important;
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 0.85rem;

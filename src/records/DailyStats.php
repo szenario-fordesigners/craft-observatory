@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis\records;
+namespace szenario\craftobservatory\records;
 
 use craft\db\ActiveRecord;
 
@@ -26,6 +26,6 @@ class DailyStats extends ActiveRecord
      */
     public static function tableName(): string
     {
-        return '{{%umami_daily_stats}}';
+        return '{{%observatory_daily_stats}}';
     }
 }

@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis\helpers;
+namespace szenario\craftobservatory\helpers;
 
 use Craft;
 
@@ -10,7 +10,7 @@ use Craft;
  *
  * The optional $tz parameter lets unit tests pin a specific zone without booting Craft.
  */
-class UmamiTime
+class AnalyticsTime
 {
     public static function appTimeZone(): \DateTimeZone
     {

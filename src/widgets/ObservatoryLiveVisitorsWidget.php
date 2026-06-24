@@ -1,9 +1,9 @@
 <?php
 
-namespace szenario\craftumamiis\widgets;
+namespace szenario\craftobservatory\widgets;
 
 use craft\base\Widget;
-use szenario\craftumamiis\assetbundles\craftumamiiswidget\CraftUmamiIsWidgetAsset;
+use szenario\craftobservatory\assetbundles\craftobservatorywidget\CraftObservatoryWidgetAsset;
 use Craft;
 
 /**
@@ -11,14 +11,14 @@ use Craft;
  *
  * Shows the current number of active visitors, refreshed once a minute.
  */
-class UmamiIsLiveVisitorsWidget extends Widget
+class ObservatoryLiveVisitorsWidget extends Widget
 {
     /**
      * @inheritdoc
      */
     public static function displayName(): string
     {
-        return 'Umami.is Live Visitors';
+        return 'Observatory Live Visitors';
     }
 
     /**
@@ -50,9 +50,9 @@ class UmamiIsLiveVisitorsWidget extends Widget
      */
     public function getBodyHtml(): ?string
     {
-        Craft::$app->getView()->registerAssetBundle(CraftUmamiIsWidgetAsset::class);
+        Craft::$app->getView()->registerAssetBundle(CraftObservatoryWidgetAsset::class);
 
-        return Craft::$app->getView()->renderTemplate('umami-is/_widget-shell', [
+        return Craft::$app->getView()->renderTemplate('observatory/_widget-shell', [
             'widgetName' => 'live-visitors',
             'props' => [
                 'locale' => Craft::$app->getLocale()->id,

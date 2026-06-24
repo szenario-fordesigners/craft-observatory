@@ -3,7 +3,8 @@ import { computed } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
-import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
+import StatusNotice from '@/shared/StatusNotice.vue';
+import type { AnalyticsStatus } from '@/shared/analyticsTypes';
 import { useWidgetData } from '@/shared/useWidgetData';
 
 interface MetricEntry {
@@ -13,13 +14,13 @@ interface MetricEntry {
 
 interface MetricsResponse {
   data: MetricEntry[];
-  _status?: UmamiStatus;
+  _status?: AnalyticsStatus;
 }
 
-const hasError = (s: UmamiStatus | undefined): boolean =>
+const hasError = (s: AnalyticsStatus | undefined): boolean =>
   !!s && (!s.configured || !s.apiKeyValid);
 
-const { data, loading, error } = useWidgetData<MetricsResponse>('umami-is/dashboard/get-metrics?type=referrer');
+const { data, loading, error } = useWidgetData<MetricsResponse>('observatory/dashboard/get-metrics?type=referrer');
 
 const displayedReferrers = computed(() => {
   if (!data.value?.data) return [];
@@ -59,79 +60,79 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
     <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
 
     <template v-else>
-    <div class="umami-referrers__head">
-      <div class="umami-referrers__col">
-        <div class="umami-referrers__header">top referrers</div>
-        <div class="umami-referrers__subheader">last 7 days</div>
+    <div class="observatory-referrers__head">
+      <div class="observatory-referrers__col">
+        <div class="observatory-referrers__header">top referrers</div>
+        <div class="observatory-referrers__subheader">last 7 days</div>
       </div>
     </div>
 
-    <hr class="umami-widget__divider" />
+    <hr class="observatory-widget__divider" />
 
-    <div class="umami-referrers__list-container">
-      <div v-if="error" class="umami-referrers__error">
+    <div class="observatory-referrers__list-container">
+      <div v-if="error" class="observatory-referrers__error">
         Failed to load referrers
       </div>
-      <div v-else-if="!loading && listItems.length === 0" class="umami-referrers__empty">
+      <div v-else-if="!loading && listItems.length === 0" class="observatory-referrers__empty">
         No referrers found
       </div>
-      <div v-else class="umami-referrers__list">
+      <div v-else class="observatory-referrers__list">
         <div
           v-for="(item, index) in listItems"
           :key="item.x"
-          class="umami-referrers__item"
-          :class="{ 'umami-referrers__item--real': !item.isSkeleton }"
+          class="observatory-referrers__item"
+          :class="{ 'observatory-referrers__item--real': !item.isSkeleton }"
           :style="!item.isSkeleton ? { animationDelay: getSkeletonDelay(index) } : undefined"
         >
           <!-- Background bar -->
-          <div 
-            class="umami-referrers__bar-bg"
-            :class="{ 'umami-referrers__bar-bg--skeleton': item.isSkeleton }"
-            :style="{ 
+          <div
+            class="observatory-referrers__bar-bg"
+            :class="{ 'observatory-referrers__bar-bg--skeleton': item.isSkeleton }"
+            :style="{
               width: item.isSkeleton ? '100%' : `${(item.y / maxVisitors) * 100}%`,
-              animationDelay: item.isSkeleton ? getSkeletonDelay(index) : undefined 
+              animationDelay: item.isSkeleton ? getSkeletonDelay(index) : undefined
             }"
           ></div>
-          
-          <div class="umami-referrers__item-content">
-            <div class="umami-referrers__domain-group">
+
+          <div class="observatory-referrers__item-content">
+            <div class="observatory-referrers__domain-group">
               <CrossFade>
-                <div 
-                  v-if="item.isSkeleton" 
-                  key="skel-icon" 
-                  class="umami-referrers__skeleton-icon"
+                <div
+                  v-if="item.isSkeleton"
+                  key="skel-icon"
+                  class="observatory-referrers__skeleton-icon"
                   :style="{ animationDelay: getSkeletonDelay(index) }"
                 ></div>
-                <img 
-                  v-else 
+                <img
+                  v-else
                   key="real-icon"
-                  :src="getFaviconUrl(item.x)" 
-                  class="umami-referrers__favicon" 
-                  alt="" 
-                  loading="lazy" 
+                  :src="getFaviconUrl(item.x)"
+                  class="observatory-referrers__favicon"
+                  alt=""
+                  loading="lazy"
                   @error="($event.target as HTMLImageElement).style.display='none'"
                 />
               </CrossFade>
 
               <CrossFade>
-                <SkeletonText 
-                  v-if="item.isSkeleton" 
-                  key="skel-text" 
-                  style="width: 140px;" 
+                <SkeletonText
+                  v-if="item.isSkeleton"
+                  key="skel-text"
+                  style="width: 140px;"
                   :style="{ animationDelay: getSkeletonDelay(index) }"
                 />
-                <span v-else key="real-text" class="umami-referrers__domain">{{ item.x }}</span>
+                <span v-else key="real-text" class="observatory-referrers__domain">{{ item.x }}</span>
               </CrossFade>
             </div>
-            
+
             <CrossFade>
-              <SkeletonText 
-                v-if="item.isSkeleton" 
-                key="skel-val" 
-                style="width: 30px;" 
+              <SkeletonText
+                v-if="item.isSkeleton"
+                key="skel-val"
+                style="width: 30px;"
                 :style="{ animationDelay: getSkeletonDelay(index) }"
               />
-              <span v-else key="real-val" class="umami-referrers__visitors">{{ item.y }}</span>
+              <span v-else key="real-val" class="observatory-referrers__visitors">{{ item.y }}</span>
             </CrossFade>
           </div>
         </div>
@@ -142,47 +143,47 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
 </template>
 
 <style scoped>
-.umami-referrers__head {
+.observatory-referrers__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
 }
 
-.umami-referrers__col {
+.observatory-referrers__col {
   display: flex;
   flex-direction: column;
 }
 
-.umami-referrers__header {
+.observatory-referrers__header {
   font-size: 1.125rem;
   font-weight: 500;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   line-height: 1;
 }
 
-.umami-referrers__subheader {
+.observatory-referrers__subheader {
   font-size: 0.875rem;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   opacity: 0.7;
   margin-top: 0.25rem;
 }
 
-.umami-referrers__list-container {
+.observatory-referrers__list-container {
   position: relative;
   min-height: 200px;
   display: flex;
   flex-direction: column;
 }
 
-.umami-referrers__list {
+.observatory-referrers__list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
 }
 
-.umami-referrers__item {
+.observatory-referrers__item {
   position: relative;
   display: flex;
   align-items: center;
@@ -194,33 +195,33 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
 /* Fade-in entrance for the real items when they replace the skeleton row.
    `backwards` holds opacity 0 during the staggered animation-delay, otherwise
    the row would flash in before its delay elapses. */
-.umami-referrers__item--real {
-  animation: umami-referrers-item-fade-in 0.5s ease backwards;
+.observatory-referrers__item--real {
+  animation: observatory-referrers-item-fade-in 0.5s ease backwards;
 }
 
-@keyframes umami-referrers-item-fade-in {
+@keyframes observatory-referrers-item-fade-in {
   from {
     opacity: 0;
   }
 }
 
-.umami-referrers__bar-bg {
+.observatory-referrers__bar-bg {
   position: absolute;
   top: 0;
   left: 0;
   height: 100%;
-  background-color: color-mix(in srgb, var(--umami-fg) 10%, transparent);
+  background-color: color-mix(in srgb, var(--observatory-fg) 10%, transparent);
   border-radius: 4px;
   z-index: 0;
   transition: width 0.5s ease-out;
 }
 
-.umami-referrers__bar-bg--skeleton {
+.observatory-referrers__bar-bg--skeleton {
   opacity: 0.4;
-  animation: umami-bar-pulse 1.4s ease-in-out infinite;
+  animation: observatory-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-referrers__item-content {
+.observatory-referrers__item-content {
   position: relative;
   z-index: 1;
   display: flex;
@@ -230,54 +231,54 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
   padding: 0 0.5rem;
 }
 
-.umami-referrers__domain-group {
+.observatory-referrers__domain-group {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   overflow: hidden;
 }
 
-.umami-referrers__favicon {
+.observatory-referrers__favicon {
   width: 16px;
   height: 16px;
   object-fit: contain;
   flex-shrink: 0;
 }
 
-.umami-referrers__skeleton-icon {
+.observatory-referrers__skeleton-icon {
   width: 16px;
   height: 16px;
   border-radius: 2px;
-  background-color: color-mix(in srgb, var(--umami-fg) 20%, transparent);
-  animation: umami-bar-pulse 1.4s ease-in-out infinite;
+  background-color: color-mix(in srgb, var(--observatory-fg) 20%, transparent);
+  animation: observatory-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-referrers__domain {
+.observatory-referrers__domain {
   font-size: 0.95rem;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.umami-referrers__visitors {
+.observatory-referrers__visitors {
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   padding-left: 1rem;
 }
 
-.umami-referrers__error,
-.umami-referrers__empty {
+.observatory-referrers__error,
+.observatory-referrers__empty {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   opacity: 0.7;
 }
 
-@keyframes umami-bar-pulse {
+@keyframes observatory-bar-pulse {
   0% { opacity: 0.4; }
   50% { opacity: 0.8; }
   100% { opacity: 0.4; }
@@ -285,7 +286,7 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
 </style>
 
 <style>
-div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsReferrersWidget'] .widget-heading {
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryReferrersWidget'] .widget-heading {
   display: none;
 }
 </style>

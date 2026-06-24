@@ -3,7 +3,8 @@ import { computed, onUnmounted, watch } from 'vue';
 import WidgetFrame from '@/shared/WidgetFrame.vue';
 import SkeletonText from '@/shared/SkeletonText.vue';
 import CrossFade from '@/shared/CrossFade.vue';
-import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
+import StatusNotice from '@/shared/StatusNotice.vue';
+import type { AnalyticsStatus } from '@/shared/analyticsTypes';
 import Tooltip from '@/shared/Tooltip.vue';
 import CountryMap from '@/shared/CountryMap.vue';
 import { useWidgetData } from '@/shared/useWidgetData';
@@ -31,11 +32,11 @@ interface Visitors {
     browser: TopMetric | null;
   };
   countries: TopMetric[];
-  _status?: UmamiStatus;
+  _status?: AnalyticsStatus;
   _syncing?: boolean;
 }
 
-const hasError = (s: UmamiStatus | undefined): boolean => !!s && (!s.configured || !s.apiKeyValid);
+const hasError = (s: AnalyticsStatus | undefined): boolean => !!s && (!s.configured || !s.apiKeyValid);
 
 const props = defineProps<{
   locale?: string;
@@ -43,7 +44,7 @@ const props = defineProps<{
 
 const skeletonHeights = [55, 35, 48, 70, 100, 28, 60];
 
-const { data, refetch } = useWidgetData<Visitors>('umami-is/dashboard/get-widget-summary');
+const { data, refetch } = useWidgetData<Visitors>('observatory/dashboard/get-widget-summary');
 
 const ready = computed(() => (data.value && !data.value._syncing ? data.value : null));
 
@@ -138,12 +139,12 @@ const barHeightFor = (i: number): string => {
     <StatusNotice v-if="hasError(data?._status)" :status="data?._status" variant="widget" />
 
     <template v-else>
-      <div class="umami-visitors__head">
-        <div class="umami-visitors__col umami-visitors__col--visitors">
-          <div class="umami-visitors__header">visitors</div>
+      <div class="observatory-visitors__head">
+        <div class="observatory-visitors__col observatory-visitors__col--visitors">
+          <div class="observatory-visitors__header">visitors</div>
           <svg
             v-if="!ready || ready.deltaDirection > 0"
-            class="umami-visitors__arrow"
+            class="observatory-visitors__arrow"
             viewBox="0 0 54 51"
             fill="currentColor"
             xmlns="http://www.w3.org/2000/svg"
@@ -154,7 +155,7 @@ const barHeightFor = (i: number): string => {
           </svg>
           <svg
             v-else-if="ready.deltaDirection < 0"
-            class="umami-visitors__arrow umami-visitors__arrow--down"
+            class="observatory-visitors__arrow observatory-visitors__arrow--down"
             viewBox="0 0 54 51"
             fill="currentColor"
             xmlns="http://www.w3.org/2000/svg"
@@ -165,7 +166,7 @@ const barHeightFor = (i: number): string => {
           </svg>
           <svg
             v-else
-            class="umami-visitors__arrow"
+            class="observatory-visitors__arrow"
             viewBox="0 0 54 51"
             fill="currentColor"
             xmlns="http://www.w3.org/2000/svg"
@@ -174,9 +175,9 @@ const barHeightFor = (i: number): string => {
           </svg>
         </div>
 
-        <div class="umami-visitors__col umami-visitors__col--total">
-          <div class="umami-visitors__header">last 7 days</div>
-          <div class="umami-visitors__total-count">
+        <div class="observatory-visitors__col observatory-visitors__col--total">
+          <div class="observatory-visitors__header">last 7 days</div>
+          <div class="observatory-visitors__total-count">
             <CrossFade>
               <span v-if="ready" key="total-real">{{ formatNumber(ready.totalVisitors) }}</span>
               <SkeletonText v-else key="total-skel" variant="total" />
@@ -184,25 +185,25 @@ const barHeightFor = (i: number): string => {
           </div>
         </div>
 
-        <div class="umami-visitors__col umami-visitors__col--top">
-          <div class="umami-visitors__header">top</div>
-          <div class="umami-visitors__top-grid">
+        <div class="observatory-visitors__col observatory-visitors__col--top">
+          <div class="observatory-visitors__header">top</div>
+          <div class="observatory-visitors__top-grid">
             <div>country</div>
-            <div class="umami-visitors__top-value">
+            <div class="observatory-visitors__top-value">
               <CrossFade>
                 <span v-if="ready" key="country-real">{{ topCountry }}</span>
                 <SkeletonText v-else key="country-skel" />
               </CrossFade>
             </div>
             <div>referrers</div>
-            <div class="umami-visitors__top-value">
+            <div class="observatory-visitors__top-value">
               <CrossFade>
                 <span v-if="ready" key="ref-real">{{ ready.top.referrer?.x ?? '—' }}</span>
                 <SkeletonText v-else key="ref-skel" />
               </CrossFade>
             </div>
             <div>browser</div>
-            <div class="umami-visitors__top-value">
+            <div class="observatory-visitors__top-value">
               <CrossFade>
                 <span v-if="ready" key="br-real">{{ ready.top.browser?.x ?? '—' }}</span>
                 <SkeletonText v-else key="br-skel" />
@@ -212,21 +213,21 @@ const barHeightFor = (i: number): string => {
         </div>
       </div>
 
-      <hr class="umami-widget__divider" />
+      <hr class="observatory-widget__divider" />
 
-      <div class="umami-visitors__bars">
-        <div class="umami-visitors__gridlines" aria-hidden="true">
+      <div class="observatory-visitors__bars">
+        <div class="observatory-visitors__gridlines" aria-hidden="true">
           <div
             v-for="line in gridLines"
             :key="line"
-            class="umami-visitors__gridline"
+            class="observatory-visitors__gridline"
             :style="{ bottom: `${(line / chartMaxVisitors) * 100}%` }"
           />
         </div>
 
-        <div v-for="i in 7" :key="i - 1" class="umami-visitors__bar-cell">
+        <div v-for="i in 7" :key="i - 1" class="observatory-visitors__bar-cell">
           <Tooltip
-            class="umami-visitors__bar-slot"
+            class="observatory-visitors__bar-slot"
             :text="
               ready && ready.daily[i - 1]
                 ? `${formatNumber(ready.daily[i - 1].visitors)} visitors`
@@ -235,49 +236,49 @@ const barHeightFor = (i: number): string => {
             :style="{ height: barHeightFor(i - 1) }"
           >
             <div
-              class="umami-visitors__bar"
-              :class="{ 'umami-visitors__bar--skeleton': !ready }"
+              class="observatory-visitors__bar"
+              :class="{ 'observatory-visitors__bar--skeleton': !ready }"
               :style="{ animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined }"
             ></div>
           </Tooltip>
         </div>
 
-        <div class="umami-visitors__grid-labels" aria-hidden="true">
+        <div class="observatory-visitors__grid-labels" aria-hidden="true">
           <span
             v-for="line in gridLines"
             :key="line"
-            class="umami-visitors__grid-label"
+            class="observatory-visitors__grid-label"
             :style="{ bottom: `${(line / chartMaxVisitors) * 100}%` }"
             >{{ formatNumber(line) }}</span
           >
         </div>
       </div>
 
-      <div class="umami-visitors__labels">
-        <div v-for="i in 7" :key="i - 1" class="umami-visitors__label-cell">
+      <div class="observatory-visitors__labels">
+        <div v-for="i in 7" :key="i - 1" class="observatory-visitors__label-cell">
           <CrossFade>
-            <div v-if="ready" :key="`real-${i - 1}`" class="umami-visitors__label-content">
-              <div class="umami-visitors__day">
+            <div v-if="ready" :key="`real-${i - 1}`" class="observatory-visitors__label-content">
+              <div class="observatory-visitors__day">
                 {{ ready.daily[i - 1] ? formatDay(ready.daily[i - 1].date) : '' }}
               </div>
             </div>
-            <div v-else :key="`skel-${i - 1}`" class="umami-visitors__label-content">
+            <div v-else :key="`skel-${i - 1}`" class="observatory-visitors__label-content">
               <SkeletonText variant="narrow" />
             </div>
           </CrossFade>
         </div>
       </div>
 
-      <div class="umami-visitors__map">
+      <div class="observatory-visitors__map">
         <CountryMap :countries="data?.countries" :locale="localeId" />
       </div>
     </template>
 
     <template #footer>
-      <div class="umami-widget__footer umami-visitors__footer">
+      <div class="observatory-widget__footer observatory-visitors__footer">
         <span
-          class="umami-visitors__syncing"
-          :class="{ 'umami-visitors__syncing--hidden': !data?._syncing }"
+          class="observatory-visitors__syncing"
+          :class="{ 'observatory-visitors__syncing--hidden': !data?._syncing }"
         >
           syncing historical data…
         </span>
@@ -288,48 +289,48 @@ const barHeightFor = (i: number): string => {
 </template>
 
 <style scoped>
-.umami-visitors__head {
+.observatory-visitors__head {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
   column-gap: 2.5rem;
   align-items: start;
 }
 
-.umami-visitors__col {
+.observatory-visitors__col {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.umami-visitors__header {
+.observatory-visitors__header {
   font-size: 1.25rem;
   margin-bottom: 0.5rem;
 }
 
-.umami-visitors__arrow {
+.observatory-visitors__arrow {
   width: 3rem;
   height: 3rem;
   margin-top: 0.25rem;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
 }
 
-.umami-visitors__arrow--down {
+.observatory-visitors__arrow--down {
   transform: rotate(180deg);
 }
 
-.umami-visitors__total-count {
+.observatory-visitors__total-count {
   font-size: 3.75rem;
   line-height: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
-.umami-visitors__total-count > :deep(*) {
+.observatory-visitors__total-count > :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
 
-.umami-visitors__top-grid {
+.observatory-visitors__top-grid {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 1rem;
@@ -337,19 +338,19 @@ const barHeightFor = (i: number): string => {
   line-height: 1.2;
 }
 
-.umami-visitors__top-value {
+.observatory-visitors__top-value {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
-.umami-visitors__top-value > :deep(*) {
+.observatory-visitors__top-value > :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
 
-.umami-visitors__bars {
-  --umami-visitors-axis-gutter: 1.6rem;
+.observatory-visitors__bars {
+  --observatory-visitors-axis-gutter: 1.6rem;
 
   position: relative;
   display: grid;
@@ -357,49 +358,49 @@ const barHeightFor = (i: number): string => {
   column-gap: 1rem;
   align-items: end;
   height: 9rem;
-  padding-inline-end: var(--umami-visitors-axis-gutter);
-  border-bottom: 1px solid color-mix(in srgb, var(--umami-fg) 45%, transparent);
+  padding-inline-end: var(--observatory-visitors-axis-gutter);
+  border-bottom: 1px solid color-mix(in srgb, var(--observatory-fg) 45%, transparent);
   margin-bottom: 0.3rem;
 }
 
 /* Horizontal reference lines (behind bars) + value labels (in front). */
-.umami-visitors__gridlines,
-.umami-visitors__grid-labels {
+.observatory-visitors__gridlines,
+.observatory-visitors__grid-labels {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.umami-visitors__gridlines {
+.observatory-visitors__gridlines {
   z-index: 0;
 }
 
-.umami-visitors__gridline {
+.observatory-visitors__gridline {
   position: absolute;
   left: 0;
   right: 0;
-  border-top: 1px dashed color-mix(in srgb, var(--umami-fg) 20%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--observatory-fg) 20%, transparent);
 }
 
-.umami-visitors__grid-labels {
+.observatory-visitors__grid-labels {
   z-index: 2;
 }
 
-.umami-visitors__grid-label {
+.observatory-visitors__grid-label {
   position: absolute;
   right: 0;
   transform: translateY(50%);
   font-size: 0.6rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  color: var(--umami-fg);
+  color: var(--observatory-fg);
   opacity: 0.55;
-  background-color: var(--umami-bg);
+  background-color: var(--observatory-bg);
   padding: 0 3px;
   border-radius: 2px;
 }
 
-.umami-visitors__bar-cell {
+.observatory-visitors__bar-cell {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -408,44 +409,44 @@ const barHeightFor = (i: number): string => {
   gap: 3px;
 }
 
-.umami-visitors__bar-slot {
+.observatory-visitors__bar-slot {
   width: 70%;
   min-height: 1px;
   transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.umami-visitors__bar {
+.observatory-visitors__bar {
   position: relative;
   z-index: 1;
   width: 100%;
   height: 100%;
-  background-image: linear-gradient(180deg, var(--umami-fg) 0%, var(--umami-bar-bottom) 100%);
+  background-image: linear-gradient(180deg, var(--observatory-fg) 0%, var(--observatory-bar-bottom) 100%);
   opacity: 0.45;
   transition: opacity 0.4s ease;
 }
 
-.umami-visitors__bar::before {
+.observatory-visitors__bar::before {
   content: '';
   position: absolute;
   inset: 0;
-  background-color: var(--umami-fg);
+  background-color: var(--observatory-fg);
   opacity: 0;
   transition: opacity 0.4s ease;
 }
 
-.umami-visitors__bar--skeleton::before {
+.observatory-visitors__bar--skeleton::before {
   opacity: 1;
-  animation: umami-bar-pulse 1.4s ease-in-out infinite;
+  animation: observatory-bar-pulse 1.4s ease-in-out infinite;
 }
 
-.umami-visitors__labels {
+.observatory-visitors__labels {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   column-gap: 1rem;
-  padding-inline-end: var(--umami-visitors-axis-gutter, 1.6rem);
+  padding-inline-end: var(--observatory-visitors-axis-gutter, 1.6rem);
 }
 
-.umami-visitors__label-cell {
+.observatory-visitors__label-cell {
   text-align: center;
   font-size: 0.95rem;
   line-height: 1.2;
@@ -453,51 +454,51 @@ const barHeightFor = (i: number): string => {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.umami-visitors__label-cell > :deep(*) {
+.observatory-visitors__label-cell > :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
 
-.umami-visitors__label-content {
+.observatory-visitors__label-content {
   display: flex;
   flex-direction: column;
 }
 
-.umami-visitors__day {
+.observatory-visitors__day {
   font-size: 14px;
   text-align: center;
   opacity: 0.7;
 }
 
-.umami-visitors__map {
+.observatory-visitors__map {
   margin-top: 1.25rem;
 }
 
-.umami-visitors__footer {
+.observatory-visitors__footer {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   margin-top: 0.5rem;
 }
 
-.umami-visitors__syncing--hidden {
+.observatory-visitors__syncing--hidden {
   visibility: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .umami-visitors__bar-slot,
-  .umami-visitors__bar,
-  .umami-visitors__bar::before {
+  .observatory-visitors__bar-slot,
+  .observatory-visitors__bar,
+  .observatory-visitors__bar::before {
     transition: none;
   }
-  .umami-visitors__bar--skeleton::before {
+  .observatory-visitors__bar--skeleton::before {
     animation: none;
     opacity: 0.3;
   }
 }
 
-@container umami-pane (max-width: 440px) {
-  .umami-visitors__head {
+@container observatory-pane (max-width: 440px) {
+  .observatory-visitors__head {
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas:
       'visitors total'
@@ -505,33 +506,33 @@ const barHeightFor = (i: number): string => {
     row-gap: 1rem;
     column-gap: 1.5rem;
   }
-  .umami-visitors__col--visitors {
+  .observatory-visitors__col--visitors {
     grid-area: visitors;
   }
-  .umami-visitors__col--total {
+  .observatory-visitors__col--total {
     grid-area: total;
   }
-  .umami-visitors__col--top {
+  .observatory-visitors__col--top {
     grid-area: top;
   }
 }
 
-@container umami-pane (max-width: 320px) {
-  .umami-visitors__head {
+@container observatory-pane (max-width: 320px) {
+  .observatory-visitors__head {
     grid-template-columns: 1fr;
     grid-template-areas:
       'visitors'
       'total'
       'top';
   }
-  .umami-visitors__total-count {
+  .observatory-visitors__total-count {
     font-size: 3rem;
   }
 }
 </style>
 
 <style>
-div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsVisitorsWidget'] .widget-heading {
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryVisitorsWidget'] .widget-heading {
   display: none;
 }
 </style>

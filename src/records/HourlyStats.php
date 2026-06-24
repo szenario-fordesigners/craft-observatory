@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis\records;
+namespace szenario\craftobservatory\records;
 
 use craft\db\ActiveRecord;
 
@@ -19,6 +19,6 @@ class HourlyStats extends ActiveRecord
 {
     public static function tableName(): string
     {
-        return '{{%umami_hourly_stats}}';
+        return '{{%observatory_hourly_stats}}';
     }
 }

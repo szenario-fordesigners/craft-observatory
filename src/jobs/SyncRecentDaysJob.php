@@ -1,14 +1,14 @@
 <?php
 
-namespace szenario\craftumamiis\jobs;
+namespace szenario\craftobservatory\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\Observatory;
 
 /**
  * Fetches any not-yet-synced days in the rolling recent window — the last
- * UmamiIs::EVENTS_CLOSED_DAYS closed days, which together with today (handled live)
+ * Observatory::EVENTS_CLOSED_DAYS closed days, which together with today (handled live)
  * make up the dashboard's "last week".
  *
  * Each day is fetched exactly once: a day with a DailyStats row is skipped entirely.
@@ -30,19 +30,19 @@ class SyncRecentDaysJob extends BaseJob
         }
 
         $startTime = microtime(true);
-        Craft::info("SyncRecentDaysJob starting: websiteId={$this->websiteId}.", 'umami-is');
+        Craft::info("SyncRecentDaysJob starting: websiteId={$this->websiteId}.", 'observatory');
 
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
 
         try {
-            $daySpecs = $plugin->sync->findUnsyncedDaySpecs($this->websiteId, 1, UmamiIs::EVENTS_CLOSED_DAYS);
+            $daySpecs = $plugin->sync->findUnsyncedDaySpecs($this->websiteId, 1, Observatory::EVENTS_CLOSED_DAYS);
 
             if (empty($daySpecs)) {
-                Craft::info('SyncRecentDaysJob: recent window already synced.', 'umami-is');
+                Craft::info('SyncRecentDaysJob: recent window already synced.', 'observatory');
                 return;
             }
 
-            Craft::info('SyncRecentDaysJob: fetching ' . \count($daySpecs) . ' unsynced recent day(s).', 'umami-is');
+            Craft::info('SyncRecentDaysJob: fetching ' . \count($daySpecs) . ' unsynced recent day(s).', 'observatory');
 
             // Three passes over the same unsynced days, each a third of the progress bar.
             $daily = $plugin->sync->fetchAndStoreDailyStats(
@@ -64,7 +64,7 @@ class SyncRecentDaysJob extends BaseJob
                 "hourly(synced={$hourly['synced']}, failed={$hourly['failed']}), " .
                 "events(synced={$events['synced']}, failed={$events['failed']}), days=" . \count($daySpecs) .
                 ", elapsed={$elapsed}s.",
-                'umami-is'
+                'observatory'
             );
         } finally {
             $plugin->sync->resetAutoSyncTimeGuard($this->websiteId);
@@ -73,6 +73,6 @@ class SyncRecentDaysJob extends BaseJob
 
     protected function defaultDescription(): ?string
     {
-        return Craft::t('umami-is', 'Syncing recent analytics stats');
+        return Craft::t('observatory', 'Syncing recent analytics stats');
     }
 }

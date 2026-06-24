@@ -1,10 +1,10 @@
 <?php
 
-namespace szenario\craftumamiis\console\controllers;
+namespace szenario\craftobservatory\console\controllers;
 
 use craft\console\Controller;
-use szenario\craftumamiis\helpers\UmamiTime;
-use szenario\craftumamiis\UmamiIs;
+use szenario\craftobservatory\helpers\AnalyticsTime;
+use szenario\craftobservatory\Observatory;
 use yii\console\ExitCode;
 
 /**
@@ -25,7 +25,7 @@ class SyncController extends Controller
     /**
      * Hand-pull the last X days from the selected analytics source and save to the local db.
      * Defaults to last 30 days.
-     * Example: `craft umami-is/sync/historical 30 8`
+     * Example: `craft observatory/sync/historical 30 8`
      * 
      * @param int $days Number of days to pull
      * @param int $concurrency Number of concurrent requests
@@ -35,13 +35,13 @@ class SyncController extends Controller
     {
         $this->stdout("Starting sync for the last {$days} days of analytics stats (concurrency {$concurrency})...\n");
 
-        $plugin = UmamiIs::getInstance();
+        $plugin = Observatory::getInstance();
         $successCount = 0;
 
         $daySpecs = [];
         for ($i = 1; $i <= $days; $i++) {
-            $dateStr = UmamiTime::dateOffset($i);
-            [$startAt, $endAt] = UmamiTime::dayBounds($dateStr);
+            $dateStr = AnalyticsTime::dateOffset($i);
+            [$startAt, $endAt] = AnalyticsTime::dayBounds($dateStr);
 
             $daySpecs[] = [
                 'date' => $dateStr,

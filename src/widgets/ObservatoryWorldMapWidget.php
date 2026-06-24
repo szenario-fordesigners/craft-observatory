@@ -1,16 +1,16 @@
 <?php
 
-namespace szenario\craftumamiis\widgets;
+namespace szenario\craftobservatory\widgets;
 
 use Craft;
 use craft\base\Widget;
-use szenario\craftumamiis\assetbundles\craftumamiiswidget\CraftUmamiIsWidgetAsset;
+use szenario\craftobservatory\assetbundles\craftobservatorywidget\CraftObservatoryWidgetAsset;
 
-class UmamiIsWorldMapWidget extends Widget
+class ObservatoryWorldMapWidget extends Widget
 {
     public static function displayName(): string
     {
-        return 'Umami.is World Map';
+        return 'Observatory World Map';
     }
 
     public static function isSelectable(): bool
@@ -25,9 +25,9 @@ class UmamiIsWorldMapWidget extends Widget
 
     public function getBodyHtml(): ?string
     {
-        Craft::$app->getView()->registerAssetBundle(CraftUmamiIsWidgetAsset::class);
+        Craft::$app->getView()->registerAssetBundle(CraftObservatoryWidgetAsset::class);
 
-        return Craft::$app->getView()->renderTemplate('umami-is/_widget-shell', [
+        return Craft::$app->getView()->renderTemplate('observatory/_widget-shell', [
             'widgetName' => 'world-map',
             'props' => [
                 'locale' => Craft::$app->getLocale()->id,

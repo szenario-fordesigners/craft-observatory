@@ -1,6 +1,6 @@
 <?php
 
-namespace szenario\craftumamiis\migrations;
+namespace szenario\craftobservatory\migrations;
 
 use Craft;
 use craft\db\Migration;
@@ -17,8 +17,8 @@ class Install extends Migration
     {
         $schema = Craft::$app->db->schema;
 
-        if ($schema->getTableSchema('{{%umami_daily_stats}}') === null) {
-            $this->createTable('{{%umami_daily_stats}}', [
+        if ($schema->getTableSchema('{{%observatory_daily_stats}}') === null) {
+            $this->createTable('{{%observatory_daily_stats}}', [
                 'id' => $this->primaryKey(),
                 'websiteId' => $this->string()->notNull(),
                 'date' => $this->date()->notNull(),
@@ -32,11 +32,11 @@ class Install extends Migration
                 'uid' => $this->uid(),
             ]);
 
-            $this->createIndex(null, '{{%umami_daily_stats}}', ['websiteId', 'date'], true);
+            $this->createIndex(null, '{{%observatory_daily_stats}}', ['websiteId', 'date'], true);
         }
 
-        if ($schema->getTableSchema('{{%umami_daily_events}}') === null) {
-            // Umami event names are case-sensitive; MySQL's default utf8mb4_*_ci
+        if ($schema->getTableSchema('{{%observatory_daily_events}}') === null) {
+            // Analytics event names are case-sensitive; MySQL's default utf8mb4_*_ci
             // collation would collapse "LoginSuccess" and "loginsuccess" into one
             // row under the unique index, so force a binary collation there.
             // Postgres is case-sensitive by default and has no equivalent knob.
@@ -45,7 +45,7 @@ class Install extends Migration
                 $eventName->append('COLLATE utf8mb4_bin');
             }
 
-            $this->createTable('{{%umami_daily_events}}', [
+            $this->createTable('{{%observatory_daily_events}}', [
                 'id' => $this->primaryKey(),
                 'websiteId' => $this->string()->notNull(),
                 'date' => $this->date()->notNull(),
@@ -56,11 +56,11 @@ class Install extends Migration
                 'uid' => $this->uid(),
             ]);
 
-            $this->createIndex(null, '{{%umami_daily_events}}', ['websiteId', 'date', 'eventName'], true);
+            $this->createIndex(null, '{{%observatory_daily_events}}', ['websiteId', 'date', 'eventName'], true);
         }
 
-        if (Craft::$app->db->schema->getTableSchema('{{%umami_hourly_stats}}') === null) {
-            $this->createTable('{{%umami_hourly_stats}}', [
+        if (Craft::$app->db->schema->getTableSchema('{{%observatory_hourly_stats}}') === null) {
+            $this->createTable('{{%observatory_hourly_stats}}', [
                 'id' => $this->primaryKey(),
                 'websiteId' => $this->string()->notNull(),
                 'date' => $this->date()->notNull(),
@@ -72,7 +72,7 @@ class Install extends Migration
                 'uid' => $this->uid(),
             ]);
 
-            $this->createIndex(null, '{{%umami_hourly_stats}}', ['websiteId', 'date', 'hour'], true);
+            $this->createIndex(null, '{{%observatory_hourly_stats}}', ['websiteId', 'date', 'hour'], true);
         }
 
         return true;
@@ -83,9 +83,9 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
-        $this->dropTableIfExists('{{%umami_daily_events}}');
-        $this->dropTableIfExists('{{%umami_hourly_stats}}');
-        $this->dropTableIfExists('{{%umami_daily_stats}}');
+        $this->dropTableIfExists('{{%observatory_daily_events}}');
+        $this->dropTableIfExists('{{%observatory_hourly_stats}}');
+        $this->dropTableIfExists('{{%observatory_daily_stats}}');
         return true;
     }
 }
