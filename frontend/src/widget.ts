@@ -45,7 +45,7 @@ function mountAll(root: Document | HTMLElement): void {
   (root as Element).querySelectorAll<HTMLElement>('[data-observatory-widget]').forEach(mountWidget);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initWidgets(): void {
   mountAll(document);
 
   new MutationObserver((mutations) => {
@@ -60,4 +60,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   }).observe(document.body, { childList: true, subtree: true });
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initWidgets, { once: true });
+} else {
+  initWidgets();
+}
