@@ -41,35 +41,40 @@ class SyncDailyStatsJob extends BaseJob
         );
 
         $plugin = UmamiIs::getInstance();
-        $daySpecs = $plugin->sync->findUnsyncedDaySpecs($this->websiteId, $this->startOffset, $this->endOffset);
 
-        if (empty($daySpecs)) {
-            Craft::info('SyncDailyStatsJob: all days in chunk already synced.', 'umami-is');
-            return;
+        try {
+            $daySpecs = $plugin->sync->findUnsyncedDaySpecs($this->websiteId, $this->startOffset, $this->endOffset);
+
+            if (empty($daySpecs)) {
+                Craft::info('SyncDailyStatsJob: all days in chunk already synced.', 'umami-is');
+                return;
+            }
+
+            Craft::info('SyncDailyStatsJob: fetching ' . \count($daySpecs) . ' unsynced day(s).', 'umami-is');
+
+            $daily = $plugin->sync->fetchAndStoreDailyStats(
+                $daySpecs,
+                fn(int $done, int $total) => $this->setProgress($queue, $done / $total * 0.5)
+            );
+
+            $hourly = $plugin->sync->fetchAndStoreHourlyStats(
+                $daySpecs,
+                fn(int $done, int $total) => $this->setProgress($queue, 0.5 + $done / $total * 0.5)
+            );
+
+            $elapsed = number_format(microtime(true) - $startTime, 2);
+            Craft::info(
+                "SyncDailyStatsJob finished: daily(synced={$daily['synced']}, failed={$daily['failed']}), " .
+                "hourly(synced={$hourly['synced']}, failed={$hourly['failed']}), elapsed={$elapsed}s.",
+                'umami-is'
+            );
+        } finally {
+            $plugin->sync->resetAutoSyncTimeGuard($this->websiteId);
         }
-
-        Craft::info('SyncDailyStatsJob: fetching ' . \count($daySpecs) . ' unsynced day(s).', 'umami-is');
-
-        $daily = $plugin->sync->fetchAndStoreDailyStats(
-            $daySpecs,
-            fn(int $done, int $total) => $this->setProgress($queue, $done / $total * 0.5)
-        );
-
-        $hourly = $plugin->sync->fetchAndStoreHourlyStats(
-            $daySpecs,
-            fn(int $done, int $total) => $this->setProgress($queue, 0.5 + $done / $total * 0.5)
-        );
-
-        $elapsed = number_format(microtime(true) - $startTime, 2);
-        Craft::info(
-            "SyncDailyStatsJob finished: daily(synced={$daily['synced']}, failed={$daily['failed']}), " .
-            "hourly(synced={$hourly['synced']}, failed={$hourly['failed']}), elapsed={$elapsed}s.",
-            'umami-is'
-        );
     }
 
     protected function defaultDescription(): ?string
     {
-        return Craft::t('umami-is', 'Backfilling missing Umami daily stats');
+        return Craft::t('umami-is', 'Backfilling missing analytics daily stats');
     }
 }

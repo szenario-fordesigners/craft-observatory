@@ -8,12 +8,12 @@ use szenario\craftumamiis\UmamiIs;
 use yii\console\ExitCode;
 
 /**
- * Sync controller for Umami analytics data
+ * Sync controller for analytics data.
  */
 class SyncController extends Controller
 {
     /**
-     * Syncs yesterday's stats from Umami into the local database.
+     * Syncs yesterday's stats into the local database.
      *
      * @return int
      */
@@ -23,7 +23,7 @@ class SyncController extends Controller
     }
 
     /**
-     * Hand-pull the last X days from Umami and save to the local db. 
+     * Hand-pull the last X days from the selected analytics source and save to the local db.
      * Defaults to last 30 days.
      * Example: `craft umami-is/sync/historical 30 8`
      * 
@@ -33,7 +33,7 @@ class SyncController extends Controller
      */
     public function actionHistorical(int $days = 30, int $concurrency = 8): int
     {
-        $this->stdout("Starting sync for the last {$days} days of Umami stats (concurrency {$concurrency})...\n");
+        $this->stdout("Starting sync for the last {$days} days of analytics stats (concurrency {$concurrency})...\n");
 
         $plugin = UmamiIs::getInstance();
         $successCount = 0;
@@ -52,7 +52,7 @@ class SyncController extends Controller
 
         $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
 
-        $batch = $plugin->client->getDailyStatsAndMetricsBatch($daySpecs, $metricsTypes, $concurrency);
+        $batch = $plugin->analytics->getDailyStatsAndBreakdownsBatch($daySpecs, $metricsTypes, $concurrency);
 
         foreach ($daySpecs as $day) {
             $dateStr = $day['date'];

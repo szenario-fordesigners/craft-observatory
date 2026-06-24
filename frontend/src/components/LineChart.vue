@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { VisXYContainer, VisLine, VisAxis } from '@unovis/vue'
 import { computed } from 'vue'
-import type { WebsitePageviews } from '@umami/api-client';
+import type { AnalyticsPageviews } from '@/shared/analyticsTypes';
 
 const props = defineProps<{
-    pageviews: WebsitePageviews | null;
+    pageviews: AnalyticsPageviews | null;
 }>();
 
 type DataRecord = { x: number, y: number }

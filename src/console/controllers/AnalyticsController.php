@@ -8,13 +8,13 @@ use szenario\craftumamiis\UmamiIs;
 class AnalyticsController extends Controller
 {
     /**
-     * Test the getActiveVisitors method of the Analytics service.
+     * Tests the live visitors method of the selected analytics source.
      */
     public function actionTestActive()
     {
         $this->stdout("Fetching active visitors...\n");
 
-        $visitors = UmamiIs::getInstance()->client->getActiveVisitors();
+        $visitors = UmamiIs::getInstance()->analytics->getLiveVisitors();
 
         if ($visitors !== null) {
             $this->stdout("Active visitors: {$visitors}\n");

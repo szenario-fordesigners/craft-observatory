@@ -4,7 +4,6 @@ namespace szenario\craftumamiis\services;
 
 use Craft;
 use craft\base\Component;
-use craft\helpers\App;
 use craft\helpers\Db;
 use craft\helpers\StringHelper;
 use szenario\craftumamiis\helpers\UmamiTime;
@@ -40,13 +39,15 @@ class SyncCoordinator extends Component
      */
     public function autoSyncMissingDays(int $days = 30, int $throttleSeconds = 300): bool
     {
-        $settings = UmamiIs::getInstance()->getSettings();
-        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
-            Craft::warning('autoSyncMissingDays skipped: no websiteId configured.', 'umami-is');
+            Craft::warning('autoSyncMissingDays skipped: no analytics storage key configured.', 'umami-is');
             return false;
         }
+
+        $cache = Craft::$app->getCache();
+        $timeGuardWasReset = $cache->get($this->_autoSyncTimeGuardResetCacheKey($websiteId)) === true;
 
         $lastUpdatedStr = DailyStats::find()
             ->where(['websiteId' => $websiteId])
@@ -54,9 +55,8 @@ class SyncCoordinator extends Component
 
         $isFirstRun = $lastUpdatedStr === null;
 
-        if (!$isFirstRun) {
-            $cache = Craft::$app->getCache();
-            $lastAttemptKey = "umami_autosync_last_attempt_{$websiteId}";
+        if (!$isFirstRun && !$timeGuardWasReset) {
+            $lastAttemptKey = $this->_autoSyncLastAttemptCacheKey($websiteId);
             if ($cache->get($lastAttemptKey) !== false) {
                 Craft::debug("autoSyncMissingDays throttled: a sync was attempted within the last {$throttleSeconds}s.", 'umami-is');
                 return false;
@@ -70,12 +70,11 @@ class SyncCoordinator extends Component
             }
         }
 
-        $cache = Craft::$app->getCache();
-
         // Dedupe pending jobs across rapid concurrent renders. The pending value stores
         // the `days` window already queued, so a request that needs a wider backfill is
         // still allowed through when the pending coverage spans fewer days. The key
-        // expires on its own after $throttleSeconds — the jobs do not manage it.
+        // expires on its own after $throttleSeconds. Jobs reset the time guard, but not
+        // this pending coverage guard, otherwise queued chunks could be duplicated.
         $pendingKey = "umami_autosync_pending_{$websiteId}";
         $existingPending = $cache->get($pendingKey);
         if ($existingPending !== false && (int) $existingPending >= $days) {
@@ -85,7 +84,11 @@ class SyncCoordinator extends Component
         $cache->set($pendingKey, $days, $throttleSeconds);
 
         if (!$isFirstRun) {
-            $cache->set("umami_autosync_last_attempt_{$websiteId}", 1, $throttleSeconds);
+            $cache->set($this->_autoSyncLastAttemptCacheKey($websiteId), 1, $throttleSeconds);
+        }
+
+        if ($timeGuardWasReset) {
+            $cache->delete($this->_autoSyncTimeGuardResetCacheKey($websiteId));
         }
 
         $queue = Craft::$app->getQueue();
@@ -115,6 +118,26 @@ class SyncCoordinator extends Component
             'umami-is'
         );
         return true;
+    }
+
+    /**
+     * Lets the next auto-sync enqueue immediately after a backfill job completes.
+     *
+     * This resets only the time-based guards. The pending coverage guard is left
+     * intact so already-queued chunks are not duplicated by rapid dashboard polling.
+     *
+     * @author szenario
+     * @since 1.0.0
+     */
+    public function resetAutoSyncTimeGuard(string $websiteId): void
+    {
+        if ($websiteId === '') {
+            return;
+        }
+
+        $cache = Craft::$app->getCache();
+        $cache->delete($this->_autoSyncLastAttemptCacheKey($websiteId));
+        $cache->set($this->_autoSyncTimeGuardResetCacheKey($websiteId), true, 600);
     }
 
     /**
@@ -175,7 +198,7 @@ class SyncCoordinator extends Component
 
         $plugin = UmamiIs::getInstance();
         $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
-        $batch = $plugin->client->getDailyStatsAndMetricsBatch($daySpecs, $metricsTypes);
+        $batch = $plugin->analytics->getDailyStatsAndBreakdownsBatch($daySpecs, $metricsTypes);
 
         $total = \count($daySpecs);
         $done = 0;
@@ -225,7 +248,7 @@ class SyncCoordinator extends Component
         }
 
         $plugin = UmamiIs::getInstance();
-        $hourlyBatch = $plugin->client->getHourlyPageviewsBatch($daySpecs);
+        $hourlyBatch = $plugin->analytics->getHourlyPageviewsBatch($daySpecs);
 
         $total = \count($daySpecs);
         $done = 0;
@@ -263,7 +286,7 @@ class SyncCoordinator extends Component
         }
 
         $plugin = UmamiIs::getInstance();
-        $eventsBatch = $plugin->client->getEventsBatch($daySpecs);
+        $eventsBatch = $plugin->analytics->getEventsBatch($daySpecs);
 
         $synced = 0;
         $failed = 0;
@@ -293,11 +316,10 @@ class SyncCoordinator extends Component
      */
     public function syncDailyStats(string $date, array $stats, array $metrics = []): bool
     {
-        $settings = UmamiIs::getInstance()->getSettings();
-        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
-            Craft::error('Cannot sync stats without an Umami Website ID.', __METHOD__);
+            Craft::error('Cannot sync stats without an analytics storage key.', __METHOD__);
             return false;
         }
 
@@ -315,8 +337,7 @@ class SyncCoordinator extends Component
         $record->pageviews = (int) ($stats['pageviews'] ?? 0);
         $record->visitors = (int) ($stats['visitors'] ?? 0);
         $record->visits = (int) ($stats['visits'] ?? 0);
-        $record->bounces = (int) ($stats['bounces'] ?? 0);
-        $record->totaltime = (int) ($stats['totaltime'] ?? 0);
+        $record->sessionDurationSeconds = (int) ($stats['sessionDurationSeconds'] ?? 0);
 
         if (!empty($metrics)) {
             $record->metrics = json_encode($metrics);
@@ -342,11 +363,10 @@ class SyncCoordinator extends Component
      */
     public function syncDailyEvents(string $date, array $events): bool
     {
-        $settings = UmamiIs::getInstance()->getSettings();
-        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
-            Craft::error('Cannot sync events without an Umami Website ID.', __METHOD__);
+            Craft::error('Cannot sync events without an analytics storage key.', __METHOD__);
             return false;
         }
 
@@ -406,11 +426,10 @@ class SyncCoordinator extends Component
      */
     public function syncHourlyStats(string $date, array $hourlyRows): bool
     {
-        $settings = UmamiIs::getInstance()->getSettings();
-        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
-            Craft::error('Cannot sync hourly stats without an Umami Website ID.', __METHOD__);
+            Craft::error('Cannot sync hourly stats without an analytics storage key.', __METHOD__);
             return false;
         }
 
@@ -443,5 +462,27 @@ class SyncCoordinator extends Component
         }
 
         return true;
+    }
+
+    /**
+     * Returns the cache key for the autosync last-attempt guard.
+     *
+     * @author szenario
+     * @since 1.0.0
+     */
+    private function _autoSyncLastAttemptCacheKey(string $websiteId): string
+    {
+        return "umami_autosync_last_attempt_{$websiteId}";
+    }
+
+    /**
+     * Returns the cache key that lets the next autosync bypass time throttling.
+     *
+     * @author szenario
+     * @since 1.0.0
+     */
+    private function _autoSyncTimeGuardResetCacheKey(string $websiteId): string
+    {
+        return "umami_autosync_time_guard_reset_{$websiteId}";
     }
 }

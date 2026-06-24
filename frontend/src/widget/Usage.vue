@@ -239,7 +239,7 @@ const barHeightFor = (i: number): string => {
         >
           syncing historical data…
         </span>
-        <span>powered by Umami</span>
+        <span>powered by analytics source</span>
       </div>
     </template>
   </WidgetFrame>

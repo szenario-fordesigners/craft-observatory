@@ -2,7 +2,6 @@
 
 namespace szenario\craftumamiis\controllers;
 
-use craft\helpers\App;
 use craft\web\Controller;
 use szenario\craftumamiis\records\DailyEvents;
 use szenario\craftumamiis\UmamiIs;
@@ -29,13 +28,13 @@ class DashboardController extends Controller
 
         // Any unsynced closed day in the window means a sync job is still pending —
         // signal the client so it can poll until the historical mirror is complete.
-        $websiteId = App::parseEnv($plugin->getSettings()->umamiWebsiteId);
+        $websiteId = $plugin->analytics->getStorageKey();
         $syncing = !empty($websiteId)
             && !empty($plugin->sync->findUnsyncedDaySpecs($websiteId, 1, $days));
 
         return $this->asJson($plugin->stats->getHeatmapData($days) + [
             '_syncing' => $syncing,
-            '_status' => $plugin->client->getStatus(),
+            '_status' => $plugin->analytics->getStatus(),
         ]);
     }
 
@@ -49,7 +48,7 @@ class DashboardController extends Controller
         $plugin->sync->autoSyncMissingDays();
 
         return $this->asJson($plugin->stats->getWidgetSummary() + [
-            '_status' => $plugin->client->getStatus(),
+            '_status' => $plugin->analytics->getStatus(),
         ]);
     }
 
@@ -63,7 +62,7 @@ class DashboardController extends Controller
         $plugin->sync->autoSyncMissingDays();
 
         return $this->asJson($plugin->stats->getUsageSummary() + [
-            '_status' => $plugin->client->getStatus(),
+            '_status' => $plugin->analytics->getStatus(),
         ]);
     }
 
@@ -79,8 +78,8 @@ class DashboardController extends Controller
         $plugin = UmamiIs::getInstance();
 
         return $this->asJson([
-            'visitors' => $plugin->client->getActiveVisitors() ?? 0,
-            '_status' => $plugin->client->getStatus(),
+            'visitors' => $plugin->analytics->getLiveVisitors() ?? 0,
+            '_status' => $plugin->analytics->getStatus(),
         ]);
     }
 
@@ -102,13 +101,13 @@ class DashboardController extends Controller
 
         \Craft::$app->getSession()->close();
         $plugin = UmamiIs::getInstance();
-        $metrics = $plugin->client->getMetricsBatch($startAt, $endAt, self::DEFAULT_METRIC_TYPES);
+        $metrics = $plugin->analytics->getBreakdowns($startAt, $endAt, self::DEFAULT_METRIC_TYPES);
 
         return $this->asJson([
-            'pageviews' => $includePageviews ? $plugin->client->getPageviews($startAt, $endAt, $unit) : null,
-            'stats' => $plugin->client->getStats($startAt, $endAt),
+            'pageviews' => $includePageviews ? $plugin->analytics->getPageviews($startAt, $endAt, $unit) : null,
+            'stats' => $plugin->analytics->getTotals($startAt, $endAt),
             'metrics' => $metrics,
-            '_status' => $plugin->client->getStatus(),
+            '_status' => $plugin->analytics->getStatus(),
         ]);
     }
 
@@ -127,7 +126,7 @@ class DashboardController extends Controller
         }
 
         \Craft::$app->getSession()->close();
-        $pageviews = UmamiIs::getInstance()->client->getPageviews(
+        $pageviews = UmamiIs::getInstance()->analytics->getPageviews(
             $startAt,
             $endAt,
             $unit
@@ -145,7 +144,7 @@ class DashboardController extends Controller
         [$startAt, $endAt] = $this->resolveRange();
 
         \Craft::$app->getSession()->close();
-        $stats = UmamiIs::getInstance()->client->getStats(
+        $stats = UmamiIs::getInstance()->analytics->getTotals(
             $startAt,
             $endAt
         );
@@ -177,7 +176,7 @@ class DashboardController extends Controller
                 return $this->asFailure('Invalid metric type(s)', ['error' => 'Invalid metric type(s)']);
             }
 
-            return $this->asJson(UmamiIs::getInstance()->client->getMetricsBatch($startAt, $endAt, $types));
+            return $this->asJson(UmamiIs::getInstance()->analytics->getBreakdowns($startAt, $endAt, $types));
         }
 
         $types = $this->normalizeMetricTypes([(string) $typeParam]);
@@ -186,7 +185,7 @@ class DashboardController extends Controller
         }
 
         $plugin = UmamiIs::getInstance();
-        $metrics = $plugin->client->getMetrics(
+        $metrics = $plugin->analytics->getBreakdown(
             $startAt,
             $endAt,
             $types[0]
@@ -194,7 +193,7 @@ class DashboardController extends Controller
 
         return $this->asJson([
             'data' => $metrics ?? [],
-            '_status' => $plugin->client->getStatus(),
+            '_status' => $plugin->analytics->getStatus(),
         ]);
     }
 
@@ -209,12 +208,12 @@ class DashboardController extends Controller
         $plugin = UmamiIs::getInstance();
         $plugin->sync->autoSyncMissingDays();
 
-        $websiteId = App::parseEnv($plugin->getSettings()->umamiWebsiteId);
+        $websiteId = $plugin->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             return $this->asJson([
                 'data' => [],
-                '_status' => $plugin->client->getStatus(),
+                '_status' => $plugin->analytics->getStatus(),
             ]);
         }
 
@@ -233,7 +232,7 @@ class DashboardController extends Controller
         // Bucket "now" to the minute so the underlying getMetrics cache key is stable
         // for 60s — otherwise the per-second key bypasses caching entirely.
         $now = (int) (floor(time() / 60) * 60) * 1000;
-        $todayRows = $plugin->client->getMetrics($todayStart, $now, 'event') ?? [];
+        $todayRows = $plugin->analytics->getBreakdown($todayStart, $now, 'event') ?? [];
 
         $totals = [];
         foreach ($closedRows as $row) {
@@ -266,7 +265,7 @@ class DashboardController extends Controller
         return $this->asJson([
             'data' => $data,
             '_syncing' => $syncing,
-            '_status' => $plugin->client->getStatus(),
+            '_status' => $plugin->analytics->getStatus(),
         ]);
     }
 

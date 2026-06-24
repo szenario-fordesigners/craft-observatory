@@ -20,6 +20,8 @@ lerna-debug.log*
 node_modules
 .DS_Store
 dist
+!src/assetbundles/**/dist/
+!src/assetbundles/**/dist/**
 dist-ssr
 coverage
 *.local

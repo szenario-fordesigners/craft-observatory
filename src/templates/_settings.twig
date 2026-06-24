@@ -3,35 +3,107 @@
 
 {% import '_includes/forms.twig' as forms %}
 
-{{ forms.autosuggestField({
-	label: "Umami URL",
-	instructions: "The URL of your Umami instance",
-	id: "umamiUrl",
-	name: "umamiUrl",
-	suggestEnvVars: true,
-	value: settings.umamiUrl,
-	errors: settings.getErrors("umamiUrl"),
+{{ forms.selectField({
+	label: "Analytics source",
+	instructions: "Choose the provider used for dashboard analytics.",
+	id: "analyticsSource",
+	name: "analyticsSource",
+	options: [
+		{ label: "PostHog", value: "posthog" },
+		{ label: "Umami (legacy)", value: "umami" },
+	],
+	value: settings.analyticsSource,
+	errors: settings.getErrors("analyticsSource"),
 	required: true,
 }) }}
 
-{{ forms.autosuggestField({
-	label: "Umami API Key",
-	instructions: "The API key of your Umami instance",
-	id: "umamiApiKey",
-	name: "umamiApiKey",
-	suggestEnvVars: true,
-	value: settings.umamiApiKey,
-	errors: settings.getErrors("umamiApiKey"),
-	required: true,
-}) }}
+<div data-analytics-source-fields="posthog">
+	<hr>
 
+	<h2>PostHog</h2>
 
-{{ forms.autosuggestField({
-	label: "Umami Website ID",
-	instructions: "The ID of the website in your Umami instance",
-	id: "umamiWebsiteId",
-	name: "umamiWebsiteId",
-	value: settings.umamiWebsiteId,
-	errors: settings.getErrors("umamiWebsiteId"),
-	required: true,
-}) }}
+	{{ forms.autosuggestField({
+		label: "PostHog host",
+		instructions: "Your PostHog app host, for example https://us.posthog.com or https://eu.posthog.com.",
+		id: "posthogHost",
+		name: "posthogHost",
+		suggestEnvVars: true,
+		value: settings.posthogHost,
+		errors: settings.getErrors("posthogHost"),
+	}) }}
+
+	{{ forms.autosuggestField({
+		label: "PostHog project ID",
+		instructions: "The PostHog project ID used by the Query API.",
+		id: "posthogProjectId",
+		name: "posthogProjectId",
+		suggestEnvVars: true,
+		value: settings.posthogProjectId,
+		errors: settings.getErrors("posthogProjectId"),
+	}) }}
+
+	{{ forms.autosuggestField({
+		label: "PostHog personal API key",
+		instructions: "A personal API key with the query:read scope.",
+		id: "posthogPersonalApiKey",
+		name: "posthogPersonalApiKey",
+		suggestEnvVars: true,
+		value: settings.posthogPersonalApiKey,
+		errors: settings.getErrors("posthogPersonalApiKey"),
+	}) }}
+</div>
+
+<div data-analytics-source-fields="umami">
+	<hr>
+
+	<h2>Umami legacy source</h2>
+
+	{{ forms.autosuggestField({
+		label: "Umami URL",
+		instructions: "The URL of your Umami instance. Only used when the legacy Umami source is selected.",
+		id: "umamiUrl",
+		name: "umamiUrl",
+		suggestEnvVars: true,
+		value: settings.umamiUrl,
+		errors: settings.getErrors("umamiUrl"),
+	}) }}
+
+	{{ forms.autosuggestField({
+		label: "Umami API Key",
+		instructions: "The API key of your Umami instance. Only used when the legacy Umami source is selected.",
+		id: "umamiApiKey",
+		name: "umamiApiKey",
+		suggestEnvVars: true,
+		value: settings.umamiApiKey,
+		errors: settings.getErrors("umamiApiKey"),
+	}) }}
+
+	{{ forms.autosuggestField({
+		label: "Umami Website ID",
+		instructions: "The ID of the website in your Umami instance. Only used when the legacy Umami source is selected.",
+		id: "umamiWebsiteId",
+		name: "umamiWebsiteId",
+		value: settings.umamiWebsiteId,
+		errors: settings.getErrors("umamiWebsiteId"),
+	}) }}
+</div>
+
+{% js %}
+	(() => {
+		const sourceSelect = document.getElementById('settings-analyticsSource');
+		const providerSections = document.querySelectorAll('[data-analytics-source-fields]');
+
+		if (!sourceSelect) {
+			return;
+		}
+
+		const updateVisibleProvider = () => {
+			providerSections.forEach((section) => {
+				section.hidden = section.dataset.analyticsSourceFields !== sourceSelect.value;
+			});
+		};
+
+		sourceSelect.addEventListener('change', updateVisibleProvider);
+		updateVisibleProvider();
+	})();
+{% endjs %}

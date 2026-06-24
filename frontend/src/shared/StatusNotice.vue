@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import type { AnalyticsStatus } from './analyticsTypes';
 
-export interface UmamiStatus {
-  configured: boolean;
-  apiKeyValid: boolean;
-}
+export type UmamiStatus = AnalyticsStatus;
 
 const props = defineProps<{
-  status: UmamiStatus | null | undefined;
+  status: AnalyticsStatus | null | undefined;
   /** 'cp' = full banner for the CP page; 'widget' = compact inline notice */
   variant?: 'cp' | 'widget';
 }>();
@@ -23,14 +21,14 @@ const state = computed<'ok' | 'unconfigured' | 'invalid-key'>(() => {
 
 const heading = computed(() =>
   state.value === 'unconfigured'
-    ? 'Umami is not configured'
-    : 'Umami API key is invalid',
+    ? 'Analytics source is not configured'
+    : 'Analytics API key is invalid',
 );
 
 const message = computed(() =>
   state.value === 'unconfigured'
-    ? 'Set the Umami URL, Website ID and API Key in plugin settings to start collecting stats.'
-    : 'Stats can’t be loaded — Umami rejected the API key. Check the key in plugin settings.',
+    ? 'Set the analytics source credentials in plugin settings to start loading stats.'
+    : 'Stats can’t be loaded — the selected analytics source rejected the API key. Check the key in plugin settings.',
 );
 
 // Best-effort link to the plugin settings page. Falls back to "#" if Craft helper isn’t available.

@@ -3,7 +3,6 @@
 namespace szenario\craftumamiis\services;
 
 use craft\base\Component;
-use craft\helpers\App;
 use szenario\craftumamiis\helpers\UmamiTime;
 use szenario\craftumamiis\records\DailyStats;
 use szenario\craftumamiis\records\HourlyStats;
@@ -49,8 +48,7 @@ class StatsReport extends Component
             'top' => ['country' => null, 'referrer' => null, 'browser' => null],
         ];
 
-        $settings = UmamiIs::getInstance()->getSettings();
-        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             return $empty;
@@ -66,11 +64,11 @@ class StatsReport extends Component
         [$priorStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(13));
         [, $priorEnd] = UmamiTime::dayBounds(UmamiTime::dateOffset(7));
 
-        $client = UmamiIs::getInstance()->client;
+        $analytics = UmamiIs::getInstance()->analytics;
 
-        $weekStats = $client->getStats($weekStart, $nowBucketed, $bucketSec) ?? [];
-        $priorStats = $client->getStats($priorStart, $priorEnd, $bucketSec) ?? [];
-        $metrics = $client->getMetricsBatch(
+        $weekStats = $analytics->getTotals($weekStart, $nowBucketed, $bucketSec) ?? [];
+        $priorStats = $analytics->getTotals($priorStart, $priorEnd, $bucketSec) ?? [];
+        $metrics = $analytics->getBreakdowns(
             $weekStart,
             $nowBucketed,
             ['country', 'referrer', 'browser'],
@@ -141,8 +139,7 @@ class StatsReport extends Component
             '_syncing' => false,
         ];
 
-        $settings = UmamiIs::getInstance()->getSettings();
-        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             return $empty;
@@ -158,18 +155,18 @@ class StatsReport extends Component
         [$priorStart, ] = UmamiTime::dayBounds(UmamiTime::dateOffset(13));
         [, $priorEnd] = UmamiTime::dayBounds(UmamiTime::dateOffset(7));
 
-        $client = UmamiIs::getInstance()->client;
-        $weekStats = $client->getStats($weekStart, $nowBucketed, $bucketSec) ?? [];
-        $priorStats = $client->getStats($priorStart, $priorEnd, $bucketSec) ?? [];
+        $analytics = UmamiIs::getInstance()->analytics;
+        $weekStats = $analytics->getTotals($weekStart, $nowBucketed, $bucketSec) ?? [];
+        $priorStats = $analytics->getTotals($priorStart, $priorEnd, $bucketSec) ?? [];
 
         $totalViews = (int) ($weekStats['pageviews'] ?? 0);
         $priorViews = (int) ($priorStats['pageviews'] ?? 0);
         [$deltaPercent, $deltaDirection] = $this->computeDelta($totalViews, $priorViews);
 
         $visits = (int) ($weekStats['visits'] ?? 0);
-        $totaltime = (int) ($weekStats['totaltime'] ?? 0);
+        $sessionDurationSeconds = (int) ($weekStats['sessionDurationSeconds'] ?? 0);
         // Average session duration in whole seconds; the client formats it as m:ss.
-        $avgDuration = $visits > 0 ? (int) round($totaltime / $visits) : 0;
+        $avgDuration = $visits > 0 ? (int) round($sessionDurationSeconds / $visits) : 0;
 
         $syncing = false;
         $daily = array_reverse(array_map(
@@ -232,8 +229,7 @@ class StatsReport extends Component
      */
     public function getHeatmapData(int $lookbackDays = 90): array
     {
-        $settings = UmamiIs::getInstance()->getSettings();
-        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
 
         $empty = ['cells' => [], 'maxVisitors' => 0.0, 'daysWithData' => 0];
 
@@ -290,12 +286,11 @@ class StatsReport extends Component
 
     /**
      * @param int $days Number of days to include (including today).
-     * @return array<int,array{date:string,pageviews:int,visitors:int,visits:int,bounces:int,totaltime:int,metrics:array,source:string}>
+     * @return array<int,array{date:string,pageviews:int,visitors:int,visits:int,sessionDurationSeconds:int,metrics:array,source:string}>
      */
     public function getDailyStatsReport(int $days = 30): array
     {
-        $settings = UmamiIs::getInstance()->getSettings();
-        $websiteId = App::parseEnv($settings->umamiWebsiteId);
+        $websiteId = UmamiIs::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {
             return [];
@@ -328,22 +323,20 @@ class StatsReport extends Component
                     'pageviews' => $record->pageviews,
                     'visitors' => $record->visitors,
                     'visits' => $record->visits,
-                    'bounces' => $record->bounces,
-                    'totaltime' => $record->totaltime,
+                    'sessionDurationSeconds' => $record->sessionDurationSeconds,
                     'metrics' => $record->metrics ? json_decode($record->metrics, true) : [],
                     'source' => 'DB',
                 ];
             } elseif ($isToday) {
                 [$startAt, ] = UmamiTime::dayBounds($dateStr);
-                $stats = UmamiIs::getInstance()->client->getStats($startAt, $todayEndAt, $todayBucketSec);
+                $stats = UmamiIs::getInstance()->analytics->getTotals($startAt, $todayEndAt, $todayBucketSec);
 
                 $report[] = [
                     'date' => $dateStr,
                     'pageviews' => (int) ($stats['pageviews'] ?? 0),
                     'visitors' => (int) ($stats['visitors'] ?? 0),
                     'visits' => (int) ($stats['visits'] ?? 0),
-                    'bounces' => (int) ($stats['bounces'] ?? 0),
-                    'totaltime' => (int) ($stats['totaltime'] ?? 0),
+                    'sessionDurationSeconds' => (int) ($stats['sessionDurationSeconds'] ?? 0),
                     'metrics' => [],
                     'source' => 'API',
                 ];
@@ -353,8 +346,7 @@ class StatsReport extends Component
                     'pageviews' => 0,
                     'visitors' => 0,
                     'visits' => 0,
-                    'bounces' => 0,
-                    'totaltime' => 0,
+                    'sessionDurationSeconds' => 0,
                     'metrics' => [],
                     'source' => 'Queued',
                 ];

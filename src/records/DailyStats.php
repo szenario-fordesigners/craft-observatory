@@ -13,8 +13,7 @@ use craft\db\ActiveRecord;
  * @property int $pageviews
  * @property int $visitors
  * @property int $visits
- * @property int $bounces
- * @property int $totaltime
+ * @property int $sessionDurationSeconds
  * @property string|null $metrics
  * @property string $dateCreated
  * @property string $dateUpdated

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { PropType } from 'vue';
-import type { WebsiteMetric } from '@umami/api-client';
+import type { AnalyticsMetric } from '@/shared/analyticsTypes';
 
 const props = defineProps({
   data: {
-    type: Array as PropType<WebsiteMetric[]>,
+    type: Array as PropType<AnalyticsMetric[]>,
     required: true
   },
   loading: {
@@ -20,7 +20,7 @@ const props = defineProps({
 });
 
 const maxCount = computed(() => {
-  return Math.max(...props.data.map((d: WebsiteMetric) => d.y), 0);
+  return Math.max(...props.data.map((d: AnalyticsMetric) => d.y), 0);
 });
 
 const getPercentage = (val: number) => {

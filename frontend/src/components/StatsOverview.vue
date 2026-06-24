@@ -6,15 +6,13 @@ interface SiteStats {
   unique?: number
   visits?: number
   pageviews?: number
-  bounces?: number
-  totaltime?: number
+  sessionDurationSeconds?: number
   comparison?: {
     visitors?: number
     unique?: number
     visits?: number
     pageviews?: number
-    bounces?: number
-    totaltime?: number
+    sessionDurationSeconds?: number
   }
 }
 
@@ -56,23 +54,16 @@ const formatedStats = computed(() => {
     const pageviews = statsObj.pageviews || 0;
     const prevPageviews = compObj.pageviews || 0;
 
-    const bounces = statsObj.bounces || 0;
-    const prevBounces = compObj.bounces || 0;
-
-    const totaltime = statsObj.totaltime || 0;
-    const prevTotaltime = compObj.totaltime || 0;
+    const sessionDurationSeconds = statsObj.sessionDurationSeconds || 0;
+    const prevSessionDurationSeconds = compObj.sessionDurationSeconds || 0;
 
     const calculateChange = (curr: number, prev: number) => {
         if (prev === 0) return curr > 0 ? 100 : 0;
         return ((curr - prev) / prev) * 100;
     };
 
-    const currBounceRate = visits > 0 ? (bounces / visits) * 100 : 0;
-    const prevBounceRate = prevVisits > 0 ? (prevBounces / prevVisits) * 100 : 0;
-    const boundsRateChange = calculateChange(currBounceRate, prevBounceRate);
-
-    const currDuration = visits > 0 ? totaltime / visits : 0;
-    const prevDuration = prevVisits > 0 ? prevTotaltime / prevVisits : 0;
+    const currDuration = visits > 0 ? sessionDurationSeconds / visits : 0;
+    const prevDuration = prevVisits > 0 ? prevSessionDurationSeconds / prevVisits : 0;
     const durationChange = calculateChange(currDuration, prevDuration);
 
     const visitorsChange = calculateChange(visitors, prevVisitors);
@@ -101,13 +92,6 @@ const formatedStats = computed(() => {
             trend: Math.sign(pageviewsChange || 0),
             reverseColor: false
         },
-        bounceRate: {
-            value: Math.round(currBounceRate) + '%',
-            change: boundsRateChange, 
-            formatChange: formatPct(boundsRateChange),
-            trend: Math.sign(boundsRateChange || 0),
-            reverseColor: true
-        },
         visitDuration: {
             value: formatTime(currDuration),
             change: durationChange,
@@ -122,10 +106,10 @@ const formatedStats = computed(() => {
 </script>
 
 <template>
-  <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
     
     <template v-if="loading">
-        <div v-for="i in 5" :key="i" class="bg-white rounded-lg p-6 border border-gray-100 shadow-sm animate-pulse">
+        <div v-for="i in 4" :key="i" class="bg-white rounded-lg p-6 border border-gray-100 shadow-sm animate-pulse">
             <div class="h-4 bg-gray-200 rounded w-1/2 mb-4 mx-auto"></div>
             <div class="h-8 bg-gray-200 rounded w-3/4 mb-4 mx-auto"></div>
             <div class="h-4 bg-gray-200 rounded w-1/4 mx-auto"></div>

@@ -33,41 +33,46 @@ class SyncRecentDaysJob extends BaseJob
         Craft::info("SyncRecentDaysJob starting: websiteId={$this->websiteId}.", 'umami-is');
 
         $plugin = UmamiIs::getInstance();
-        $daySpecs = $plugin->sync->findUnsyncedDaySpecs($this->websiteId, 1, UmamiIs::EVENTS_CLOSED_DAYS);
 
-        if (empty($daySpecs)) {
-            Craft::info('SyncRecentDaysJob: recent window already synced.', 'umami-is');
-            return;
+        try {
+            $daySpecs = $plugin->sync->findUnsyncedDaySpecs($this->websiteId, 1, UmamiIs::EVENTS_CLOSED_DAYS);
+
+            if (empty($daySpecs)) {
+                Craft::info('SyncRecentDaysJob: recent window already synced.', 'umami-is');
+                return;
+            }
+
+            Craft::info('SyncRecentDaysJob: fetching ' . \count($daySpecs) . ' unsynced recent day(s).', 'umami-is');
+
+            // Three passes over the same unsynced days, each a third of the progress bar.
+            $daily = $plugin->sync->fetchAndStoreDailyStats(
+                $daySpecs,
+                fn(int $done, int $total) => $this->setProgress($queue, $done / $total / 3)
+            );
+
+            $hourly = $plugin->sync->fetchAndStoreHourlyStats(
+                $daySpecs,
+                fn(int $done, int $total) => $this->setProgress($queue, 1 / 3 + $done / $total / 3)
+            );
+
+            $events = $plugin->sync->fetchAndStoreEvents($daySpecs);
+            $this->setProgress($queue, 1.0);
+
+            $elapsed = number_format(microtime(true) - $startTime, 2);
+            Craft::info(
+                "SyncRecentDaysJob finished: daily(synced={$daily['synced']}, failed={$daily['failed']}), " .
+                "hourly(synced={$hourly['synced']}, failed={$hourly['failed']}), " .
+                "events(synced={$events['synced']}, failed={$events['failed']}), days=" . \count($daySpecs) .
+                ", elapsed={$elapsed}s.",
+                'umami-is'
+            );
+        } finally {
+            $plugin->sync->resetAutoSyncTimeGuard($this->websiteId);
         }
-
-        Craft::info('SyncRecentDaysJob: fetching ' . \count($daySpecs) . ' unsynced recent day(s).', 'umami-is');
-
-        // Three passes over the same unsynced days, each a third of the progress bar.
-        $daily = $plugin->sync->fetchAndStoreDailyStats(
-            $daySpecs,
-            fn(int $done, int $total) => $this->setProgress($queue, $done / $total / 3)
-        );
-
-        $hourly = $plugin->sync->fetchAndStoreHourlyStats(
-            $daySpecs,
-            fn(int $done, int $total) => $this->setProgress($queue, 1 / 3 + $done / $total / 3)
-        );
-
-        $events = $plugin->sync->fetchAndStoreEvents($daySpecs);
-        $this->setProgress($queue, 1.0);
-
-        $elapsed = number_format(microtime(true) - $startTime, 2);
-        Craft::info(
-            "SyncRecentDaysJob finished: daily(synced={$daily['synced']}, failed={$daily['failed']}), " .
-            "hourly(synced={$hourly['synced']}, failed={$hourly['failed']}), " .
-            "events(synced={$events['synced']}, failed={$events['failed']}), days=" . \count($daySpecs) .
-            ", elapsed={$elapsed}s.",
-            'umami-is'
-        );
     }
 
     protected function defaultDescription(): ?string
     {
-        return Craft::t('umami-is', 'Syncing recent Umami stats');
+        return Craft::t('umami-is', 'Syncing recent analytics stats');
     }
 }

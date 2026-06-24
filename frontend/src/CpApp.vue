@@ -6,21 +6,21 @@ import MetricList from '@/components/MetricList.vue';
 import StatsOverview from '@/components/StatsOverview.vue';
 import StatusNotice, { type UmamiStatus } from '@/shared/StatusNotice.vue';
 import { useDateRange, type RangeValue } from '@/composables/useDateRange';
-import type { WebsitePageviews, WebsiteMetric, WebsiteStats } from '@umami/api-client';
+import type { AnalyticsMetric, AnalyticsPageviews, AnalyticsStats } from '@/shared/analyticsTypes';
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 
 const props = defineProps<{
   title?: string;
-  pageviews?: WebsitePageviews | null;
+  pageviews?: AnalyticsPageviews | null;
   defaultPeriod?: string;
 }>();
 
 const { currentRangeValue, currentRange, customRange, setCustomRange } = useDateRange(
   (props.defaultPeriod as RangeValue) || '24h',
 );
-const currentData = ref<WebsitePageviews | null>(props.pageviews ?? null);
+const currentData = ref<AnalyticsPageviews | null>(props.pageviews ?? null);
 
-const statsData = ref<WebsiteStats | null>(null);
+const statsData = ref<AnalyticsStats | null>(null);
 const statsLoading = ref(false);
 
 const pageTab = ref<'url' | 'entry' | 'exit'>('url');
@@ -28,7 +28,7 @@ const sourceTab = ref<'referrer' | 'channel'>('referrer');
 const envTab = ref<'browser' | 'os' | 'device'>('browser');
 const locTab = ref<'country' | 'region' | 'city'>('country');
 
-const metricsData = ref<Record<string, WebsiteMetric[]>>({});
+const metricsData = ref<Record<string, AnalyticsMetric[]>>({});
 const metricsLoading = ref(false);
 
 const dashboardStatus = ref<UmamiStatus | null>(null);
@@ -43,9 +43,9 @@ const status = computed<UmamiStatus | null>(() => {
 });
 
 interface DashboardDataResponse {
-  pageviews?: WebsitePageviews | null;
-  stats?: WebsiteStats | null;
-  metrics?: Record<string, WebsiteMetric[]>;
+  pageviews?: AnalyticsPageviews | null;
+  stats?: AnalyticsStats | null;
+  metrics?: Record<string, AnalyticsMetric[]>;
   _status?: UmamiStatus;
 }
 
