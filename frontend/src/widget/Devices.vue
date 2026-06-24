@@ -306,4 +306,8 @@ const formatDeviceName = (name: string) => {
 div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryDevicesWidget'] .widget-heading {
   display: none;
 }
+
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryDevicesWidget'] .pane {
+  --pane-padding: 16px;
+}
 </style>

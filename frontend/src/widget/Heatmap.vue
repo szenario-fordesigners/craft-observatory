@@ -425,4 +425,8 @@ const peakLabel = (weekday: number, bucketIdx: number) =>
 div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryHeatmapWidget'] .widget-heading {
   display: none;
 }
+
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryHeatmapWidget'] .pane {
+  --pane-padding: 16px;
+}
 </style>

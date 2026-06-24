@@ -278,4 +278,8 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
 div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryEventsWidget'] .widget-heading {
   display: none;
 }
+
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryEventsWidget'] .pane {
+  --pane-padding: 16px;
+}
 </style>

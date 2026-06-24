@@ -19,7 +19,8 @@ defineProps<{
   locale?: string;
 }>();
 
-const hasError = (s: AnalyticsStatus | undefined): boolean => !!s && (!s.configured || !s.apiKeyValid);
+const hasError = (s: AnalyticsStatus | undefined): boolean =>
+  !!s && (!s.configured || !s.apiKeyValid);
 
 const { data } = useWidgetData<MetricsResponse>('observatory/dashboard/get-metrics?type=country');
 </script>
@@ -69,5 +70,9 @@ const { data } = useWidgetData<MetricsResponse>('observatory/dashboard/get-metri
 <style>
 div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryWorldMapWidget'] .widget-heading {
   display: none;
+}
+
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryWorldMapWidget'] .pane {
+  --pane-padding: 16px;
 }
 </style>

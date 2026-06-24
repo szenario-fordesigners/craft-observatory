@@ -535,4 +535,8 @@ const barHeightFor = (i: number): string => {
 div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryVisitorsWidget'] .widget-heading {
   display: none;
 }
+
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryVisitorsWidget'] .pane {
+  --pane-padding: 16px;
+}
 </style>

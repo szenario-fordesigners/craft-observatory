@@ -182,4 +182,8 @@ const orbitDuration = computed(() => {
 div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryLiveVisitorsWidget'] .widget-heading {
   display: none;
 }
+
+div[data-type='szenario\\craftobservatory\\widgets\\ObservatoryLiveVisitorsWidget'] .pane {
+  --pane-padding: 16px;
+}
 </style>
