@@ -54,7 +54,7 @@ watch(
   () => data.value?._syncing,
   (syncing) => {
     if (syncing) {
-      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
+      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => { });
       if (!pollTimer) {
         pollTimer = setInterval(refetch, 5000);
       }
@@ -142,35 +142,19 @@ const barHeightFor = (i: number): string => {
       <div class="observatory-visitors__head">
         <div class="observatory-visitors__col observatory-visitors__col--visitors">
           <div class="observatory-visitors__header">visitors</div>
-          <svg
-            v-if="!ready || ready.deltaDirection > 0"
-            class="observatory-visitors__arrow"
-            viewBox="0 0 54 51"
-            fill="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-          >
+          <svg v-if="!ready || ready.deltaDirection > 0" class="observatory-visitors__arrow" viewBox="0 0 54 51"
+            fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path
-              d="M23.1482 46.6372C23.1482 48.6461 24.7768 50.2746 26.7856 50.2746C28.7945 50.2746 30.4231 48.6461 30.4231 46.6372L26.7856 46.6372L23.1482 46.6372ZM29.3577 1.06517C27.9372 -0.355331 25.6341 -0.355331 24.2136 1.06517L1.06526 24.2135C-0.355243 25.634 -0.355243 27.9371 1.06526 29.3576C2.48575 30.7781 4.78883 30.7781 6.20933 29.3576L26.7856 8.78128L47.362 29.3576C48.7825 30.7781 51.0855 30.7781 52.506 29.3576C53.9265 27.9371 53.9265 25.634 52.506 24.2135L29.3577 1.06517ZM26.7856 46.6372L30.4231 46.6372L30.4231 3.63721L26.7856 3.63721L23.1482 3.63721L23.1482 46.6372L26.7856 46.6372Z"
-            />
+              d="M23.1482 46.6372C23.1482 48.6461 24.7768 50.2746 26.7856 50.2746C28.7945 50.2746 30.4231 48.6461 30.4231 46.6372L26.7856 46.6372L23.1482 46.6372ZM29.3577 1.06517C27.9372 -0.355331 25.6341 -0.355331 24.2136 1.06517L1.06526 24.2135C-0.355243 25.634 -0.355243 27.9371 1.06526 29.3576C2.48575 30.7781 4.78883 30.7781 6.20933 29.3576L26.7856 8.78128L47.362 29.3576C48.7825 30.7781 51.0855 30.7781 52.506 29.3576C53.9265 27.9371 53.9265 25.634 52.506 24.2135L29.3577 1.06517ZM26.7856 46.6372L30.4231 46.6372L30.4231 3.63721L26.7856 3.63721L23.1482 3.63721L23.1482 46.6372L26.7856 46.6372Z" />
           </svg>
-          <svg
-            v-else-if="ready.deltaDirection < 0"
-            class="observatory-visitors__arrow observatory-visitors__arrow--down"
-            viewBox="0 0 54 51"
-            fill="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-          >
+          <svg v-else-if="ready.deltaDirection < 0"
+            class="observatory-visitors__arrow observatory-visitors__arrow--down" viewBox="0 0 54 51"
+            fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path
-              d="M23.1482 46.6372C23.1482 48.6461 24.7768 50.2746 26.7856 50.2746C28.7945 50.2746 30.4231 48.6461 30.4231 46.6372L26.7856 46.6372L23.1482 46.6372ZM29.3577 1.06517C27.9372 -0.355331 25.6341 -0.355331 24.2136 1.06517L1.06526 24.2135C-0.355243 25.634 -0.355243 27.9371 1.06526 29.3576C2.48575 30.7781 4.78883 30.7781 6.20933 29.3576L26.7856 8.78128L47.362 29.3576C48.7825 30.7781 51.0855 30.7781 52.506 29.3576C53.9265 27.9371 53.9265 25.634 52.506 24.2135L29.3577 1.06517ZM26.7856 46.6372L30.4231 46.6372L30.4231 3.63721L26.7856 3.63721L23.1482 3.63721L23.1482 46.6372L26.7856 46.6372Z"
-            />
+              d="M23.1482 46.6372C23.1482 48.6461 24.7768 50.2746 26.7856 50.2746C28.7945 50.2746 30.4231 48.6461 30.4231 46.6372L26.7856 46.6372L23.1482 46.6372ZM29.3577 1.06517C27.9372 -0.355331 25.6341 -0.355331 24.2136 1.06517L1.06526 24.2135C-0.355243 25.634 -0.355243 27.9371 1.06526 29.3576C2.48575 30.7781 4.78883 30.7781 6.20933 29.3576L26.7856 8.78128L47.362 29.3576C48.7825 30.7781 51.0855 30.7781 52.506 29.3576C53.9265 27.9371 53.9265 25.634 52.506 24.2135L29.3577 1.06517ZM26.7856 46.6372L30.4231 46.6372L30.4231 3.63721L26.7856 3.63721L23.1482 3.63721L23.1482 46.6372L26.7856 46.6372Z" />
           </svg>
-          <svg
-            v-else
-            class="observatory-visitors__arrow"
-            viewBox="0 0 54 51"
-            fill="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-          >
+          <svg v-else class="observatory-visitors__arrow" viewBox="0 0 54 51" fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg">
             <rect x="5" y="22" width="44" height="7" rx="3.5" />
           </svg>
         </div>
@@ -217,40 +201,23 @@ const barHeightFor = (i: number): string => {
 
       <div class="observatory-visitors__bars">
         <div class="observatory-visitors__gridlines" aria-hidden="true">
-          <div
-            v-for="line in gridLines"
-            :key="line"
-            class="observatory-visitors__gridline"
-            :style="{ bottom: `${(line / chartMaxVisitors) * 100}%` }"
-          />
+          <div v-for="line in gridLines" :key="line" class="observatory-visitors__gridline"
+            :style="{ bottom: `${(line / chartMaxVisitors) * 100}%` }" />
         </div>
 
         <div v-for="i in 7" :key="i - 1" class="observatory-visitors__bar-cell">
-          <Tooltip
-            class="observatory-visitors__bar-slot"
-            :text="
-              ready && ready.daily[i - 1]
-                ? `${formatNumber(ready.daily[i - 1].visitors)} visitors`
-                : ''
-            "
-            :style="{ height: barHeightFor(i - 1) }"
-          >
-            <div
-              class="observatory-visitors__bar"
-              :class="{ 'observatory-visitors__bar--skeleton': !ready }"
-              :style="{ animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined }"
-            ></div>
+          <Tooltip class="observatory-visitors__bar-slot" :text="ready && ready.daily[i - 1]
+            ? `${formatNumber(ready.daily[i - 1].visitors)} visitors`
+            : ''
+            " :style="{ height: barHeightFor(i - 1) }">
+            <div class="observatory-visitors__bar" :class="{ 'observatory-visitors__bar--skeleton': !ready }"
+              :style="{ animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined }"></div>
           </Tooltip>
         </div>
 
         <div class="observatory-visitors__grid-labels" aria-hidden="true">
-          <span
-            v-for="line in gridLines"
-            :key="line"
-            class="observatory-visitors__grid-label"
-            :style="{ bottom: `${(line / chartMaxVisitors) * 100}%` }"
-            >{{ formatNumber(line) }}</span
-          >
+          <span v-for="line in gridLines" :key="line" class="observatory-visitors__grid-label"
+            :style="{ bottom: `${(line / chartMaxVisitors) * 100}%` }">{{ formatNumber(line) }}</span>
         </div>
       </div>
 
@@ -276,13 +243,10 @@ const barHeightFor = (i: number): string => {
 
     <template #footer>
       <div class="observatory-widget__footer observatory-visitors__footer">
-        <span
-          class="observatory-visitors__syncing"
-          :class="{ 'observatory-visitors__syncing--hidden': !data?._syncing }"
-        >
+        <span class="observatory-visitors__syncing"
+          :class="{ 'observatory-visitors__syncing--hidden': !data?._syncing }">
           syncing historical data…
         </span>
-        <span>powered by analytics source</span>
       </div>
     </template>
   </WidgetFrame>
@@ -319,13 +283,13 @@ const barHeightFor = (i: number): string => {
 }
 
 .observatory-visitors__total-count {
-  font-size: 3.75rem;
+  font-size: 3.25rem;
   line-height: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
-.observatory-visitors__total-count > :deep(*) {
+.observatory-visitors__total-count> :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
@@ -344,7 +308,7 @@ const barHeightFor = (i: number): string => {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.observatory-visitors__top-value > :deep(*) {
+.observatory-visitors__top-value> :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
@@ -454,7 +418,7 @@ const barHeightFor = (i: number): string => {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.observatory-visitors__label-cell > :deep(*) {
+.observatory-visitors__label-cell> :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
@@ -486,11 +450,13 @@ const barHeightFor = (i: number): string => {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .observatory-visitors__bar-slot,
   .observatory-visitors__bar,
   .observatory-visitors__bar::before {
     transition: none;
   }
+
   .observatory-visitors__bar--skeleton::before {
     animation: none;
     opacity: 0.3;
@@ -506,12 +472,15 @@ const barHeightFor = (i: number): string => {
     row-gap: 1rem;
     column-gap: 1.5rem;
   }
+
   .observatory-visitors__col--visitors {
     grid-area: visitors;
   }
+
   .observatory-visitors__col--total {
     grid-area: total;
   }
+
   .observatory-visitors__col--top {
     grid-area: top;
   }
@@ -525,6 +494,7 @@ const barHeightFor = (i: number): string => {
       'total'
       'top';
   }
+
   .observatory-visitors__total-count {
     font-size: 3rem;
   }

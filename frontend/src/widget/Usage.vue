@@ -43,7 +43,7 @@ watch(
   () => data.value?._syncing,
   (syncing) => {
     if (syncing) {
-      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
+      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => { });
       if (!pollTimer) {
         pollTimer = setInterval(refetch, 5000);
       }
@@ -71,7 +71,7 @@ const formatDuration = (seconds: number): string => {
   if (seconds < 60) return `${seconds} s`;
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return s === 0 ? `${m} m` : `${m} m ${s} s`;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
 };
 
 const formatDay = (dateStr: string): string => {
@@ -129,35 +129,18 @@ const barHeightFor = (i: number): string => {
       <div class="observatory-usage__head">
         <div class="observatory-usage__col observatory-usage__col--title">
           <div class="observatory-usage__metric-header">usage</div>
-          <svg
-            v-if="!ready || ready.deltaDirection > 0"
-            class="observatory-usage__arrow"
-            viewBox="0 0 54 51"
-            fill="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-          >
+          <svg v-if="!ready || ready.deltaDirection > 0" class="observatory-usage__arrow" viewBox="0 0 54 51"
+            fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path
-              d="M23.1482 46.6372C23.1482 48.6461 24.7768 50.2746 26.7856 50.2746C28.7945 50.2746 30.4231 48.6461 30.4231 46.6372L26.7856 46.6372L23.1482 46.6372ZM29.3577 1.06517C27.9372 -0.355331 25.6341 -0.355331 24.2136 1.06517L1.06526 24.2135C-0.355243 25.634 -0.355243 27.9371 1.06526 29.3576C2.48575 30.7781 4.78883 30.7781 6.20933 29.3576L26.7856 8.78128L47.362 29.3576C48.7825 30.7781 51.0855 30.7781 52.506 29.3576C53.9265 27.9371 53.9265 25.634 52.506 24.2135L29.3577 1.06517ZM26.7856 46.6372L30.4231 46.6372L30.4231 3.63721L26.7856 3.63721L23.1482 3.63721L23.1482 46.6372L26.7856 46.6372Z"
-            />
+              d="M23.1482 46.6372C23.1482 48.6461 24.7768 50.2746 26.7856 50.2746C28.7945 50.2746 30.4231 48.6461 30.4231 46.6372L26.7856 46.6372L23.1482 46.6372ZM29.3577 1.06517C27.9372 -0.355331 25.6341 -0.355331 24.2136 1.06517L1.06526 24.2135C-0.355243 25.634 -0.355243 27.9371 1.06526 29.3576C2.48575 30.7781 4.78883 30.7781 6.20933 29.3576L26.7856 8.78128L47.362 29.3576C48.7825 30.7781 51.0855 30.7781 52.506 29.3576C53.9265 27.9371 53.9265 25.634 52.506 24.2135L29.3577 1.06517ZM26.7856 46.6372L30.4231 46.6372L30.4231 3.63721L26.7856 3.63721L23.1482 3.63721L23.1482 46.6372L26.7856 46.6372Z" />
           </svg>
-          <svg
-            v-else-if="ready.deltaDirection < 0"
-            class="observatory-usage__arrow observatory-usage__arrow--down"
-            viewBox="0 0 54 51"
-            fill="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-          >
+          <svg v-else-if="ready.deltaDirection < 0" class="observatory-usage__arrow observatory-usage__arrow--down"
+            viewBox="0 0 54 51" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path
-              d="M23.1482 46.6372C23.1482 48.6461 24.7768 50.2746 26.7856 50.2746C28.7945 50.2746 30.4231 48.6461 30.4231 46.6372L26.7856 46.6372L23.1482 46.6372ZM29.3577 1.06517C27.9372 -0.355331 25.6341 -0.355331 24.2136 1.06517L1.06526 24.2135C-0.355243 25.634 -0.355243 27.9371 1.06526 29.3576C2.48575 30.7781 4.78883 30.7781 6.20933 29.3576L26.7856 8.78128L47.362 29.3576C48.7825 30.7781 51.0855 30.7781 52.506 29.3576C53.9265 27.9371 53.9265 25.634 52.506 24.2135L29.3577 1.06517ZM26.7856 46.6372L30.4231 46.6372L30.4231 3.63721L26.7856 3.63721L23.1482 3.63721L23.1482 46.6372L26.7856 46.6372Z"
-            />
+              d="M23.1482 46.6372C23.1482 48.6461 24.7768 50.2746 26.7856 50.2746C28.7945 50.2746 30.4231 48.6461 30.4231 46.6372L26.7856 46.6372L23.1482 46.6372ZM29.3577 1.06517C27.9372 -0.355331 25.6341 -0.355331 24.2136 1.06517L1.06526 24.2135C-0.355243 25.634 -0.355243 27.9371 1.06526 29.3576C2.48575 30.7781 4.78883 30.7781 6.20933 29.3576L26.7856 8.78128L47.362 29.3576C48.7825 30.7781 51.0855 30.7781 52.506 29.3576C53.9265 27.9371 53.9265 25.634 52.506 24.2135L29.3577 1.06517ZM26.7856 46.6372L30.4231 46.6372L30.4231 3.63721L26.7856 3.63721L23.1482 3.63721L23.1482 46.6372L26.7856 46.6372Z" />
           </svg>
-          <svg
-            v-else
-            class="observatory-usage__arrow"
-            viewBox="0 0 54 51"
-            fill="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-          >
+          <svg v-else class="observatory-usage__arrow" viewBox="0 0 54 51" fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg">
             <rect x="5" y="22" width="44" height="7" rx="3.5" />
           </svg>
         </div>
@@ -189,38 +172,21 @@ const barHeightFor = (i: number): string => {
 
       <div class="observatory-usage__bars">
         <div class="observatory-usage__gridlines" aria-hidden="true">
-          <div
-            v-for="line in gridLines"
-            :key="line"
-            class="observatory-usage__gridline"
-            :style="{ bottom: `${(line / chartMaxViews) * 100}%` }"
-          />
+          <div v-for="line in gridLines" :key="line" class="observatory-usage__gridline"
+            :style="{ bottom: `${(line / chartMaxViews) * 100}%` }" />
         </div>
 
         <div v-for="i in 7" :key="i - 1" class="observatory-usage__bar-cell">
-          <Tooltip
-            class="observatory-usage__bar-slot"
-            :text="
-              ready && ready.daily[i - 1] ? `${formatNumber(ready.daily[i - 1].views)} views` : ''
-            "
-            :style="{ height: barHeightFor(i - 1) }"
-          >
-            <div
-              class="observatory-usage__bar"
-              :class="{ 'observatory-usage__bar--skeleton': !ready }"
-              :style="{ animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined }"
-            ></div>
+          <Tooltip class="observatory-usage__bar-slot" :text="ready && ready.daily[i - 1] ? `${formatNumber(ready.daily[i - 1].views)} views` : ''
+            " :style="{ height: barHeightFor(i - 1) }">
+            <div class="observatory-usage__bar" :class="{ 'observatory-usage__bar--skeleton': !ready }"
+              :style="{ animationDelay: !ready ? `${(i - 1) * 80}ms` : undefined }"></div>
           </Tooltip>
         </div>
 
         <div class="observatory-usage__grid-labels" aria-hidden="true">
-          <span
-            v-for="line in gridLines"
-            :key="line"
-            class="observatory-usage__grid-label"
-            :style="{ bottom: `${(line / chartMaxViews) * 100}%` }"
-            >{{ formatNumber(line) }}</span
-          >
+          <span v-for="line in gridLines" :key="line" class="observatory-usage__grid-label"
+            :style="{ bottom: `${(line / chartMaxViews) * 100}%` }">{{ formatNumber(line) }}</span>
         </div>
       </div>
 
@@ -242,19 +208,19 @@ const barHeightFor = (i: number): string => {
 
     <template #footer>
       <div class="observatory-widget__footer observatory-usage__footer">
-        <span
-          class="observatory-usage__syncing"
-          :class="{ 'observatory-usage__syncing--hidden': !data?._syncing }"
-        >
+        <span class="observatory-usage__syncing" :class="{ 'observatory-usage__syncing--hidden': !data?._syncing }">
           syncing historical data…
         </span>
-        <span>powered by analytics source</span>
       </div>
     </template>
   </WidgetFrame>
 </template>
 
 <style scoped>
+.pane hr.observatory-widget__divider {
+  margin-block: 1rem;
+}
+
 .observatory-usage__head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
@@ -275,8 +241,8 @@ const barHeightFor = (i: number): string => {
 }
 
 .observatory-usage__arrow {
-  width: 3rem;
-  height: 3rem;
+  width: 3.6rem;
+  height: 3.6rem;
   margin-top: 0.25rem;
   color: var(--observatory-fg);
 }
@@ -286,19 +252,19 @@ const barHeightFor = (i: number): string => {
 }
 
 .observatory-usage__metric-value {
-  font-size: 3.75rem;
+  font-size: 3.25rem;
   line-height: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
-.observatory-usage__metric-value > :deep(*) {
+.observatory-usage__metric-value> :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
 
 .observatory-usage__metric-label {
-  font-size: 1.25rem;
+  font-size: 0.875rem;
   margin-top: 0.25rem;
 }
 
@@ -342,7 +308,7 @@ const barHeightFor = (i: number): string => {
   position: absolute;
   right: 0;
   transform: translateY(50%);
-  font-size: 0.6rem;
+  font-size: 0.875rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--observatory-fg);
@@ -406,7 +372,7 @@ const barHeightFor = (i: number): string => {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.observatory-usage__label-cell > :deep(*) {
+.observatory-usage__label-cell> :deep(*) {
   grid-area: 1 / 1;
   min-width: 0;
 }
@@ -434,11 +400,13 @@ const barHeightFor = (i: number): string => {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .observatory-usage__bar-slot,
   .observatory-usage__bar,
   .observatory-usage__bar::before {
     transition: none;
   }
+
   .observatory-usage__bar--skeleton::before {
     animation: none;
     opacity: 0.3;
@@ -454,6 +422,7 @@ const barHeightFor = (i: number): string => {
     row-gap: 1rem;
     column-gap: 1.5rem;
   }
+
   .observatory-usage__col--title {
     grid-area: title;
   }
@@ -467,6 +436,7 @@ const barHeightFor = (i: number): string => {
       'views'
       'duration';
   }
+
   .observatory-usage__metric-value {
     font-size: 3rem;
   }
