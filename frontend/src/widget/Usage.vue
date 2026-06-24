@@ -97,18 +97,26 @@ const gridLines = computed<number[]>(() => {
   const max = maxViews.value;
   if (max <= 0) return [];
   const step = Math.max(1, Math.round(niceStep(max / 3)));
+  const scaleMax = Math.max(step, Math.ceil(max / step) * step + step);
   const lines: number[] = [];
-  for (let v = step; v < max; v += step) {
+  for (let v = step; v < scaleMax; v += step) {
     lines.push(v);
   }
   return lines;
 });
 
+const chartMaxViews = computed(() => {
+  const max = maxViews.value;
+  if (max <= 0) return 0;
+  const step = Math.max(1, Math.round(niceStep(max / 3)));
+  return Math.max(step, Math.ceil(max / step) * step + step);
+});
+
 const barHeightFor = (i: number): string => {
   if (!ready.value) return `${skeletonHeights[i]}%`;
   const day = ready.value.daily[i];
-  if (!day || maxViews.value === 0) return '0%';
-  return `${(day.views / maxViews.value) * 100}%`;
+  if (!day || chartMaxViews.value === 0) return '0%';
+  return `${(day.views / chartMaxViews.value) * 100}%`;
 };
 </script>
 
@@ -184,7 +192,7 @@ const barHeightFor = (i: number): string => {
             v-for="line in gridLines"
             :key="line"
             class="umami-usage__gridline"
-            :style="{ bottom: `${(line / maxViews) * 100}%` }"
+            :style="{ bottom: `${(line / chartMaxViews) * 100}%` }"
           />
         </div>
 
@@ -209,7 +217,7 @@ const barHeightFor = (i: number): string => {
             v-for="line in gridLines"
             :key="line"
             class="umami-usage__grid-label"
-            :style="{ bottom: `${(line / maxViews) * 100}%` }"
+            :style="{ bottom: `${(line / chartMaxViews) * 100}%` }"
             >{{ formatNumber(line) }}</span
           >
         </div>
@@ -294,12 +302,15 @@ const barHeightFor = (i: number): string => {
 }
 
 .umami-usage__bars {
+  --umami-usage-axis-gutter: 1.6rem;
+
   position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   column-gap: 1rem;
   align-items: end;
   height: 9rem;
+  padding-inline-end: var(--umami-usage-axis-gutter);
   border-bottom: 1px solid color-mix(in srgb, var(--umami-fg) 45%, transparent);
   margin-bottom: 0.3rem;
 }
@@ -383,6 +394,7 @@ const barHeightFor = (i: number): string => {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   column-gap: 1rem;
+  padding-inline-end: var(--umami-usage-axis-gutter, 1.6rem);
 }
 
 .umami-usage__label-cell {

@@ -283,3 +283,9 @@ const getSkeletonDelay = (index: number) => `${index * 100}ms`;
   100% { opacity: 0.4; }
 }
 </style>
+
+<style>
+div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsReferrersWidget'] .widget-heading {
+  display: none;
+}
+</style>

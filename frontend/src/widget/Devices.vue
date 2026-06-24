@@ -300,3 +300,9 @@ const formatDeviceName = (name: string) => {
   100% { opacity: 0.4; }
 }
 </style>
+
+<style>
+div[data-type='szenario\\craftumamiis\\widgets\\UmamiIsDevicesWidget'] .widget-heading {
+  display: none;
+}
+</style>
