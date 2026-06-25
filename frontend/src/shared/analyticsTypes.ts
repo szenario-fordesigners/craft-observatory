@@ -4,6 +4,12 @@ export interface AnalyticsStatus {
   source?: string;
 }
 
+export interface SyncFreshness {
+  _syncing: boolean;
+  lastSyncedAt: string | null;
+  missingDays: string[];
+}
+
 export interface AnalyticsMetric {
   x: string;
   y: number;

@@ -7,7 +7,7 @@ import StatsOverview from '@/components/StatsOverview.vue';
 import StatusNotice from '@/shared/StatusNotice.vue';
 import type { AnalyticsStatus } from '@/shared/analyticsTypes';
 import { useDateRange, type RangeValue } from '@/composables/useDateRange';
-import type { AnalyticsMetric, AnalyticsPageviews, AnalyticsStats } from '@/shared/analyticsTypes';
+import type { AnalyticsMetric, AnalyticsPageviews, AnalyticsStats, SyncFreshness } from '@/shared/analyticsTypes';
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 
 const props = defineProps<{
@@ -34,6 +34,7 @@ const metricsLoading = ref(false);
 
 const dashboardStatus = ref<AnalyticsStatus | null>(null);
 const heatmapStatus = ref<AnalyticsStatus | null>(null);
+const dashboardFreshness = ref<SyncFreshness | null>(null);
 
 // Show whichever status surfaced an error (dashboard fires first; heatmap is independent).
 const status = computed<AnalyticsStatus | null>(() => {
@@ -47,21 +48,54 @@ interface DashboardDataResponse {
   pageviews?: AnalyticsPageviews | null;
   stats?: AnalyticsStats | null;
   metrics?: Record<string, AnalyticsMetric[]>;
+  _syncing?: boolean;
+  lastSyncedAt?: string | null;
+  missingDays?: string[];
   _status?: AnalyticsStatus;
 }
 
 let dashboardAbortController: AbortController | null = null;
 let dashboardRequestId = 0;
+let dashboardPollTimer: ReturnType<typeof setInterval> | null = null;
 
-const fetchDashboardData = async (includePageviews = true) => {
+const stopDashboardPolling = () => {
+  if (dashboardPollTimer) {
+    clearInterval(dashboardPollTimer);
+    dashboardPollTimer = null;
+  }
+};
+
+const freshnessMessage = computed(() => {
+  const freshness = dashboardFreshness.value;
+  if (!freshness) return null;
+
+  const missingCount = freshness.missingDays.length;
+  const dayLabel = missingCount === 1 ? 'day' : 'days';
+
+  if (freshness._syncing) {
+    return missingCount > 0
+      ? `Historical data is still syncing (${missingCount} ${dayLabel} incomplete). This page will refresh automatically.`
+      : 'Historical data is still syncing. This page will refresh automatically.';
+  }
+
+  if (missingCount > 0) {
+    return `Historical data is incomplete for ${missingCount} ${dayLabel}. Sync retries may be exhausted; check the Observatory logs or queue.`;
+  }
+
+  return null;
+});
+
+const fetchDashboardData = async (includePageviews = true, showLoading = true) => {
   dashboardAbortController?.abort();
 
   const requestId = ++dashboardRequestId;
   const abortController = new AbortController();
   dashboardAbortController = abortController;
 
-  statsLoading.value = true;
-  metricsLoading.value = true;
+  if (showLoading) {
+    statsLoading.value = true;
+    metricsLoading.value = true;
+  }
 
   try {
     const url = new URL(
@@ -91,6 +125,11 @@ const fetchDashboardData = async (includePageviews = true) => {
 
       statsData.value = data.stats ?? null;
       metricsData.value = data.metrics ?? {};
+      dashboardFreshness.value = {
+        _syncing: data._syncing ?? false,
+        lastSyncedAt: data.lastSyncedAt ?? null,
+        missingDays: data.missingDays ?? [],
+      };
       dashboardStatus.value = data._status ?? null;
     }
   } catch (e) {
@@ -113,20 +152,54 @@ const fetchDashboardData = async (includePageviews = true) => {
 
 onUnmounted(() => {
   dashboardAbortController?.abort();
+  stopDashboardPolling();
 });
+
+watch(
+  () => dashboardFreshness.value?._syncing,
+  (syncing) => {
+    if (syncing) {
+      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
+      if (!dashboardPollTimer) {
+        dashboardPollTimer = setInterval(() => fetchDashboardData(true, false), 5000);
+      }
+    } else {
+      stopDashboardPolling();
+    }
+  },
+);
 
 interface HeatmapData {
   cells: { weekday: number; hour: number; visitors: number }[];
   maxVisitors: number;
   daysWithData: number;
+  _syncing?: boolean;
   _status?: AnalyticsStatus;
 }
 
 const heatmapData = ref<HeatmapData | null>(null);
 const heatmapLoading = ref(false);
+let heatmapPollTimer: ReturnType<typeof setInterval> | null = null;
 
-const fetchHeatmapData = async () => {
-  heatmapLoading.value = true;
+const heatmapFreshnessMessage = computed(() =>
+  heatmapData.value?._syncing
+    ? 'Heatmap history is still syncing. This page will refresh it automatically.'
+    : null,
+);
+
+const cpFreshnessMessage = computed(() => freshnessMessage.value ?? heatmapFreshnessMessage.value);
+
+const stopHeatmapPolling = () => {
+  if (heatmapPollTimer) {
+    clearInterval(heatmapPollTimer);
+    heatmapPollTimer = null;
+  }
+};
+
+const fetchHeatmapData = async (showLoading = true) => {
+  if (showLoading) {
+    heatmapLoading.value = true;
+  }
   try {
     const url = window.Craft.getActionUrl('observatory/dashboard/get-heatmap-data');
     const response = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -145,6 +218,22 @@ const fetchHeatmapData = async () => {
 onMounted(fetchHeatmapData);
 
 watch(
+  () => heatmapData.value?._syncing,
+  (syncing) => {
+    if (syncing) {
+      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
+      if (!heatmapPollTimer) {
+        heatmapPollTimer = setInterval(() => fetchHeatmapData(false), 5000);
+      }
+    } else {
+      stopHeatmapPolling();
+    }
+  },
+);
+
+onUnmounted(stopHeatmapPolling);
+
+watch(
   () => [currentRange.value.startAt, currentRange.value.endAt, currentRange.value.unit] as const,
   (_newVal, oldVal) => {
     fetchDashboardData(oldVal !== undefined || !currentData.value);
@@ -156,6 +245,13 @@ watch(
 <template>
   <div id="observatory-wrapper" class="rounded-lg border border-gray-200 bg-white p-6">
     <StatusNotice :status="status" variant="cp" />
+
+    <div
+      v-if="cpFreshnessMessage"
+      class="mb-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+    >
+      {{ cpFreshnessMessage }}
+    </div>
 
     <div class="mb-6 flex items-center justify-between">
       <h1 class="m-0 text-xl font-bold text-gray-800">{{ title }}</h1>

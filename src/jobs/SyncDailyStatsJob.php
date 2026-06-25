@@ -5,6 +5,7 @@ namespace szenario\craftobservatory\jobs;
 use Craft;
 use craft\queue\BaseJob;
 use szenario\craftobservatory\Observatory;
+use szenario\craftobservatory\services\SyncCoordinator;
 
 /**
  * Backfills a chunk of older days that haven't been fetched yet (daily + hourly).
@@ -43,7 +44,14 @@ class SyncDailyStatsJob extends BaseJob
         $plugin = Observatory::getInstance();
 
         try {
-            $daySpecs = $plugin->sync->findUnsyncedDaySpecs($this->websiteId, $this->startOffset, $this->endOffset);
+            // Backfill covers daily + breakdowns + hourly, but never events (the events
+            // widget only shows the recent window), so the events facet is excluded — else
+            // old days would look perpetually unsynced.
+            $daySpecs = $plugin->sync->findUnsyncedDaySpecs($this->websiteId, $this->startOffset, $this->endOffset, [
+                SyncCoordinator::FACET_DAILY,
+                SyncCoordinator::FACET_BREAKDOWNS,
+                SyncCoordinator::FACET_HOURLY,
+            ]);
 
             if (empty($daySpecs)) {
                 Craft::info('SyncDailyStatsJob: all days in chunk already synced.', 'observatory');

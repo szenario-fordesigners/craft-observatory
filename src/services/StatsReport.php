@@ -355,4 +355,230 @@ class StatsReport extends Component
 
         return $report;
     }
+
+    /**
+     * Mirror-aware multi-breakdown for a date range.
+     *
+     * Closed days (before today) are summed from the local mirror's per-day
+     * `metrics` JSON; today is fetched live from the provider and merged on top; each
+     * dimension is then re-ranked to a top-100 {x,y} list. This collapses what used to
+     * be one provider query per dimension over the whole range into a single live query
+     * for today plus one local DB read — and stays cheap regardless of range length.
+     *
+     * Only {@see Observatory::MIRRORED_METRIC_TYPES} are mirror-served; any other type
+     * falls through to a fully live breakdown over the range. The result keys always
+     * match the requested types.
+     *
+     * Correctness notes:
+     *  - Counts are summed per label across days. Pageview/session counts sum correctly,
+     *    which is why only those dimensions live in MIRRORED_METRIC_TYPES — unique-visitor
+     *    style metrics must not be served here (daily uniques don't sum to a range unique).
+     *  - Each day contributes only its stored top-100, so head rankings are accurate while
+     *    the deep tail is approximate.
+     *  - Days are the unit of granularity: the start/end timestamps are floored to local
+     *    dates, so a sub-day window still counts whole days. The CP UI only ever emits
+     *    day-aligned ranges, so this matches what callers ask for.
+     *
+     * @param string[] $types
+     * @return array<string,array<int,array{x:string,y:int}>>
+     */
+    public function getRangeBreakdowns(array $types, int $startAt, int $endAt, int $cacheDuration = 300): array
+    {
+        $types = array_values(array_unique(array_filter(array_map('trim', $types))));
+        if (empty($types)) {
+            return [];
+        }
+
+        $analytics = Observatory::getInstance()->analytics;
+        $websiteId = $analytics->getStorageKey();
+        if (empty($websiteId)) {
+            return array_fill_keys($types, []);
+        }
+
+        $results = array_fill_keys($types, []);
+
+        // Types we don't mirror go straight to the source over the full range.
+        $mirrored = array_values(array_intersect($types, Observatory::MIRRORED_METRIC_TYPES));
+        $liveOnly = array_values(array_diff($types, $mirrored));
+        if (!empty($liveOnly)) {
+            $results = array_merge($results, $analytics->getBreakdowns($startAt, $endAt, $liveOnly, $cacheDuration));
+        }
+        if (empty($mirrored)) {
+            return $results;
+        }
+
+        $tz = AnalyticsTime::appTimeZone();
+        $todayStr = AnalyticsTime::dateOffset(0);
+        $startDateStr = (new \DateTimeImmutable('@' . intdiv($startAt, 1000)))->setTimezone($tz)->format('Y-m-d');
+        $endDateStr = (new \DateTimeImmutable('@' . intdiv($endAt, 1000)))->setTimezone($tz)->format('Y-m-d');
+
+        // acc[type][label] = summed count across closed days (+ today, merged below).
+        $acc = array_fill_keys($mirrored, []);
+
+        /** @var DailyStats[] $records */
+        $records = DailyStats::find()
+            ->where(['websiteId' => $websiteId])
+            ->andWhere(['>=', 'date', $startDateStr])
+            ->andWhere(['<=', 'date', $endDateStr])
+            ->andWhere(['<', 'date', $todayStr])
+            ->all();
+
+        foreach ($records as $record) {
+            $metrics = $record->metrics ? json_decode($record->metrics, true) : [];
+            if (!\is_array($metrics)) {
+                continue;
+            }
+            $this->_accumulateBreakdowns($acc, $mirrored, $metrics);
+        }
+
+        // Merge today live, but only when the range actually reaches today.
+        if ($endDateStr >= $todayStr) {
+            [$todayStart] = AnalyticsTime::dayBounds($todayStr);
+            $todayStart = max($todayStart, $startAt);
+
+            $todayBucketSec = 60;
+            $todayEnd = min($endAt, (int) (floor(time() / $todayBucketSec) * $todayBucketSec * 1000));
+
+            if ($todayEnd > $todayStart) {
+                $today = $analytics->getBreakdowns($todayStart, $todayEnd, $mirrored, $todayBucketSec);
+                $this->_accumulateBreakdowns($acc, $mirrored, $today);
+            }
+        }
+
+        foreach ($mirrored as $type) {
+            $pairs = $acc[$type];
+            arsort($pairs);
+            $list = [];
+            foreach (\array_slice($pairs, 0, 100, true) as $label => $count) {
+                $list[] = ['x' => (string) $label, 'y' => (int) $count];
+            }
+            $results[$type] = $list;
+        }
+
+        return $results;
+    }
+
+    /**
+     * Mirror-aware single breakdown. Thin wrapper over {@see self::getRangeBreakdowns()}.
+     *
+     * @return array<int,array{x:string,y:int}>
+     */
+    public function getRangeBreakdown(string $type, int $startAt, int $endAt, int $cacheDuration = 300): array
+    {
+        return $this->getRangeBreakdowns([$type], $startAt, $endAt, $cacheDuration)[$type] ?? [];
+    }
+
+    /**
+     * Mirror-aware pageview/session time series for a date range.
+     *
+     * Day- and month-granularity ranges are served from `observatory_daily_stats`:
+     * closed days are bucketed (per day, or summed per calendar month) and today is
+     * folded in live. This turns a full-range provider scan into one DB read plus one
+     * today query, regardless of range length. Pageview and session *counts* sum
+     * correctly across days, which is why both series can be aggregated this way.
+     *
+     * Hour granularity stays live — those ranges are only a day or two, so the live
+     * query is already cheap and per-hour rows aren't kept in this table.
+     *
+     * Buckets are emitted as local-midnight datetime strings (day → that day, month →
+     * the 1st) so they share the browser's timezone with the live today point;
+     * `LineChart` parses both via `new Date()`. Days without a synced row are simply
+     * omitted, exactly as the live GROUP BY omits zero-traffic buckets.
+     *
+     * @return array{pageviews:array<int,array{x:string,t:string,y:int}>,sessions:array<int,array{x:string,t:string,y:int}>}|null
+     */
+    public function getRangePageviews(int $startAt, int $endAt, string $unit = 'day'): ?array
+    {
+        $analytics = Observatory::getInstance()->analytics;
+
+        // Only day/month granularity is mirror-served; hour (and anything else) stays live.
+        if ($unit !== 'day' && $unit !== 'month') {
+            return $analytics->getPageviews($startAt, $endAt, $unit);
+        }
+
+        $websiteId = $analytics->getStorageKey();
+        if (empty($websiteId)) {
+            return $analytics->getPageviews($startAt, $endAt, $unit);
+        }
+
+        $tz = AnalyticsTime::appTimeZone();
+        $todayStr = AnalyticsTime::dateOffset(0);
+        $startDateStr = (new \DateTimeImmutable('@' . intdiv($startAt, 1000)))->setTimezone($tz)->format('Y-m-d');
+        $endDateStr = (new \DateTimeImmutable('@' . intdiv($endAt, 1000)))->setTimezone($tz)->format('Y-m-d');
+
+        // Bucket closed days into pv[key]/ss[key]. Keys sort chronologically as strings
+        // ('Y-m-d' or 'Y-m'), so ksort gives the series in order.
+        $pv = [];
+        $ss = [];
+        $addToBucket = static function (string $dateStr, int $pageviews, int $sessions) use (&$pv, &$ss, $unit): void {
+            if ($unit === 'month') {
+                $key = substr($dateStr, 0, 7);
+                $ts = $key . '-01 00:00:00';
+            } else {
+                $key = $dateStr;
+                $ts = $dateStr . ' 00:00:00';
+            }
+            if (!isset($pv[$key])) {
+                $pv[$key] = ['x' => $ts, 't' => $ts, 'y' => 0];
+                $ss[$key] = ['x' => $ts, 't' => $ts, 'y' => 0];
+            }
+            $pv[$key]['y'] += $pageviews;
+            $ss[$key]['y'] += $sessions;
+        };
+
+        /** @var DailyStats[] $records */
+        $records = DailyStats::find()
+            ->where(['websiteId' => $websiteId])
+            ->andWhere(['>=', 'date', $startDateStr])
+            ->andWhere(['<=', 'date', $endDateStr])
+            ->andWhere(['<', 'date', $todayStr])
+            ->all();
+
+        foreach ($records as $record) {
+            $addToBucket($record->date, (int) $record->pageviews, (int) $record->visits);
+        }
+
+        // Fold today live into its bucket (its own day, or the current month).
+        if ($endDateStr >= $todayStr) {
+            [$todayStart] = AnalyticsTime::dayBounds($todayStr);
+            $todayStart = max($todayStart, $startAt);
+
+            if ($endAt > $todayStart) {
+                $today = $analytics->getPageviews($todayStart, $endAt, 'day');
+                $todayPv = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $today['pageviews'] ?? []));
+                $todaySs = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $today['sessions'] ?? []));
+                if ($todayPv > 0 || $todaySs > 0) {
+                    $addToBucket($todayStr, $todayPv, $todaySs);
+                }
+            }
+        }
+
+        ksort($pv);
+        ksort($ss);
+
+        return ['pageviews' => array_values($pv), 'sessions' => array_values($ss)];
+    }
+
+    /**
+     * Folds a `{type: [{x,y}, …]}` breakdown map into the running accumulator.
+     *
+     * @param array<string,array<string,int>> $acc Modified in place: acc[type][label] += y.
+     * @param string[] $types
+     * @param array<mixed> $breakdowns
+     */
+    private function _accumulateBreakdowns(array &$acc, array $types, array $breakdowns): void
+    {
+        foreach ($types as $type) {
+            foreach ($breakdowns[$type] ?? [] as $row) {
+                if (!\is_array($row) || !isset($row['x'])) {
+                    continue;
+                }
+                $label = (string) $row['x'];
+                if ($label === '') {
+                    continue;
+                }
+                $acc[$type][$label] = ($acc[$type][$label] ?? 0) + (int) ($row['y'] ?? 0);
+            }
+        }
+    }
 }

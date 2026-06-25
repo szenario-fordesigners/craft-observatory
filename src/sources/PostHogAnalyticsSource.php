@@ -7,6 +7,8 @@ use craft\base\Component;
 use craft\helpers\App;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Pool;
+use GuzzleHttp\Psr7\Request;
 use szenario\craftobservatory\Observatory;
 
 /**
@@ -151,28 +153,10 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      */
     public function getBreakdown(int $startAt, int $endAt, string $type, int $cacheDuration = 300): ?array
     {
-        if ($type === 'event') {
-            return $this->_getEvents($startAt, $endAt);
-        }
-
-        $sessionExpression = $this->_sessionBreakdownExpression($type);
-        if ($sessionExpression !== null) {
-            return $this->_getSessionBreakdown($startAt, $endAt, $type, $sessionExpression, $cacheDuration);
-        }
-
-        $expression = $this->_breakdownExpression($type);
-        if ($expression === null) {
+        $sql = $this->_breakdownSql($type, $startAt, $endAt);
+        if ($sql === null) {
             return [];
         }
-
-        $sql = sprintf(
-            "SELECT %s AS x, count() AS y FROM events WHERE event = '\$pageview' AND timestamp >= %s AND timestamp <= %s AND %s IS NOT NULL AND %s != '' GROUP BY x ORDER BY y DESC LIMIT 100",
-            $expression,
-            $this->_toDateTime($startAt),
-            $this->_toDateTime($endAt),
-            $expression,
-            $expression,
-        );
 
         $rows = $this->_cachedQuery($sql, "craft analytics {$type} breakdown", $cacheDuration);
         if ($rows === null) {
@@ -184,14 +168,116 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
 
     /**
      * @inheritdoc
+     *
+     * Fires every cache-missing breakdown concurrently through a Guzzle Pool so the
+     * dashboard's many dimensions resolve in roughly one round-trip instead of a
+     * serial waterfall. Cache hits are served inline and never reach the pool, and
+     * each fresh result is cached under the same key {@see self::_cachedQuery()} uses,
+     * so single and batch callers share one cache.
+     *
+     * Error signal: a type whose query **errored** is **omitted** from the returned
+     * map; a type present with an empty array is a successful query that found no rows.
+     * Callers that just render read `$result[$type] ?? []` and degrade gracefully; the
+     * sync layer uses the present/absent distinction to tell a complete day from a
+     * half-failed one (so it can retry the failure instead of freezing it).
      */
     public function getBreakdowns(int $startAt, int $endAt, array $types, int $cacheDuration = 300, int $concurrency = 8): array
     {
         $types = array_values(array_unique(array_filter(array_map('trim', $types))));
         $results = [];
 
+        if (empty($types)) {
+            return $results;
+        }
+
+        $cache = Craft::$app->getCache();
+        $queries = [];
+
         foreach ($types as $type) {
-            $results[$type] = $this->getBreakdown($startAt, $endAt, $type, $cacheDuration) ?? [];
+            $sql = $this->_breakdownSql($type, $startAt, $endAt);
+            if ($sql === null) {
+                // Unknown type is a deterministic empty, not an error — present as [].
+                $results[$type] = [];
+                continue;
+            }
+
+            $cached = $cache->get($this->_queryCacheKey($sql));
+            if ($cached !== false && \is_array($cached)) {
+                $results[$type] = $this->_normalizeMetricRows($cached);
+                continue;
+            }
+
+            $queries[$type] = $sql;
+        }
+
+        if (empty($queries)) {
+            return $results;
+        }
+
+        $context = $this->_httpContext();
+        if ($context === null) {
+            return $results;
+        }
+
+        [$host, $projectId, $apiKey] = $context;
+        $url = "{$host}/api/projects/{$projectId}/query/";
+        $headers = [
+            'Accept' => 'application/json',
+            'Authorization' => "Bearer {$apiKey}",
+            'Content-Type' => 'application/json',
+        ];
+
+        $client = Craft::createGuzzleClient([
+            'timeout' => 15.0,
+            'connect_timeout' => 3.0,
+        ]);
+
+        $requests = function () use ($queries, $url, $headers) {
+            foreach ($queries as $type => $sql) {
+                $body = json_encode([
+                    'query' => ['kind' => 'HogQLQuery', 'query' => $sql],
+                    'name' => "craft analytics {$type} breakdown",
+                ]);
+                yield (string) $type => new Request('POST', $url, $headers, $body);
+            }
+        };
+
+        $pool = new Pool($client, $requests(), [
+            'concurrency' => max(1, $concurrency),
+            'fulfilled' => function ($response, $index) use (&$results, $queries, $cache, $cacheDuration, $projectId) {
+                $this->_clearAuthError($projectId);
+
+                $type = (string) $index;
+                $body = json_decode($response->getBody()->getContents(), true);
+                if (!\is_array($body)) {
+                    Craft::error("Unexpected PostHog response for {$type} breakdown.", __METHOD__);
+                    return;
+                }
+
+                $rows = $body['results'] ?? $body['query_status']['results'] ?? null;
+                if (!\is_array($rows)) {
+                    Craft::error("PostHog response did not contain result rows for {$type} breakdown.", __METHOD__);
+                    return;
+                }
+
+                if ($cacheDuration > 0) {
+                    $cache->set($this->_queryCacheKey($queries[$type]), $rows, $cacheDuration);
+                }
+
+                $results[$type] = $this->_normalizeMetricRows($rows);
+            },
+            'rejected' => function ($reason, $index) use ($projectId) {
+                if ($reason instanceof \Throwable && $this->_isAuthError($reason)) {
+                    $this->_markAuthError($projectId);
+                }
+                Craft::error("PostHog breakdown request ({$index}) failed: {$reason}", __METHOD__);
+            },
+        ]);
+
+        try {
+            $pool->promise()->wait();
+        } catch (\Throwable $e) {
+            Craft::error("PostHog breakdowns batch request failed: {$e->getMessage()}", __METHOD__);
         }
 
         return $results;
@@ -209,10 +295,21 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             $stats = $this->getTotals($day['startAt'], $day['endAt'], 86400);
             $metrics = $this->getBreakdowns($day['startAt'], $day['endAt'], $breakdownTypes, 86400, $concurrency);
 
+            $errors = [];
+            if ($stats === null) {
+                $errors[] = 'PostHog totals query failed';
+            }
+            // getBreakdowns omits a dimension whose query errored — surface those so the
+            // sync layer can distinguish an incomplete day from a zero-traffic one.
+            $failedBreakdowns = array_values(array_diff($breakdownTypes, array_keys($metrics)));
+            if (!empty($failedBreakdowns)) {
+                $errors[] = 'PostHog breakdown query failed: ' . implode(', ', $failedBreakdowns);
+            }
+
             $results[$date] = [
                 'stats' => $stats,
                 'metrics' => $metrics,
-                'errors' => $stats === null ? ['PostHog totals query failed'] : [],
+                'errors' => $errors,
             ];
         }
 
@@ -228,7 +325,12 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
 
         foreach ($days as $day) {
             $body = $this->getPageviews($day['startAt'], $day['endAt'], 'hour');
-            $results[$day['date']] = $body ? $this->_parseHourlyPageviews($body) : [];
+            // Omit a day whose fetch errored so callers can tell it apart from a
+            // genuinely zero-traffic day (which is present with an empty array).
+            if ($body === null) {
+                continue;
+            }
+            $results[$day['date']] = $this->_parseHourlyPageviews($body);
         }
 
         return $results;
@@ -242,7 +344,13 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
         $results = [];
 
         foreach ($days as $day) {
-            $results[$day['date']] = $this->_getEvents($day['startAt'], $day['endAt']) ?? [];
+            $events = $this->_getEvents($day['startAt'], $day['endAt']);
+            // Omit a day whose fetch errored (null); a day with no custom events is
+            // present with an empty array. Lets the sync layer retry only real failures.
+            if ($events === null) {
+                continue;
+            }
+            $results[$day['date']] = $events;
         }
 
         return $results;
@@ -250,6 +358,20 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
 
     // Private Methods
     // =========================================================================
+
+    /**
+     * Returns the cache key for a HogQL query's result rows.
+     *
+     * Keyed purely on the SQL so any caller running the same query — single or
+     * batched — shares one cached result.
+     *
+     * @author szenario
+     * @since 1.0.0
+     */
+    private function _queryCacheKey(string $sql): string
+    {
+        return 'posthog_query_' . md5($sql);
+    }
 
     /**
      * Runs a cached HogQL query and returns its result rows.
@@ -261,7 +383,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      */
     private function _cachedQuery(string $sql, string $name, int $cacheDuration): ?array
     {
-        $cacheKey = 'posthog_query_' . md5($sql);
+        $cacheKey = $this->_queryCacheKey($sql);
         $cache = Craft::$app->getCache();
         $cached = $cache->get($cacheKey);
 
@@ -497,8 +619,8 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      * type, or null when the type is event-scoped.
      *
      * Entry page, exit page and channel are properties of a *session*, not of any
-     * single pageview, so they live on PostHog's `sessions` table and are queried by
-     * {@see self::_getSessionBreakdown()} rather than the events path.
+     * single pageview, so they live on PostHog's `sessions` table and are queried over
+     * the `$start_timestamp` window rather than the events path.
      *
      * @author szenario
      * @since 1.0.0
@@ -514,34 +636,54 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
     }
 
     /**
-     * Runs a session-scoped breakdown against PostHog's `sessions` table.
+     * Builds the HogQL query for a breakdown type, or null when the type is unknown.
      *
-     * Mirrors {@see self::getBreakdown()}'s event path but counts sessions over the
-     * `$start_timestamp` window instead of pageviews, so a row's count answers
-     * "how many sessions" for that entry page / exit page / channel.
-     *
-     * @return array<int,array{x:string,y:int}>|null
+     * Single ({@see self::getBreakdown()}) and batch ({@see self::getBreakdowns()})
+     * callers share this so both produce byte-identical SQL — and therefore the same
+     * cache key. Custom events count from the `events` table, entry/exit/channel from
+     * the session-scoped `sessions` table, and everything else counts `$pageview`s.
      *
      * @author szenario
      * @since 1.0.0
      */
-    private function _getSessionBreakdown(int $startAt, int $endAt, string $type, string $expression, int $cacheDuration): ?array
+    private function _breakdownSql(string $type, int $startAt, int $endAt): ?string
     {
-        $sql = sprintf(
-            "SELECT %s AS x, count() AS y FROM sessions WHERE \$start_timestamp >= %s AND \$start_timestamp <= %s AND %s IS NOT NULL AND %s != '' GROUP BY x ORDER BY y DESC LIMIT 100",
-            $expression,
-            $this->_toDateTime($startAt),
-            $this->_toDateTime($endAt),
-            $expression,
-            $expression,
-        );
+        $from = $this->_toDateTime($startAt);
+        $to = $this->_toDateTime($endAt);
 
-        $rows = $this->_cachedQuery($sql, "craft analytics {$type} breakdown", $cacheDuration);
-        if ($rows === null) {
+        if ($type === 'event') {
+            return sprintf(
+                "SELECT event AS x, count() AS y FROM events WHERE timestamp >= %s AND timestamp <= %s AND NOT startsWith(event, '\$') GROUP BY event ORDER BY y DESC LIMIT 100",
+                $from,
+                $to,
+            );
+        }
+
+        $sessionExpression = $this->_sessionBreakdownExpression($type);
+        if ($sessionExpression !== null) {
+            return sprintf(
+                "SELECT %s AS x, count() AS y FROM sessions WHERE \$start_timestamp >= %s AND \$start_timestamp <= %s AND %s IS NOT NULL AND %s != '' GROUP BY x ORDER BY y DESC LIMIT 100",
+                $sessionExpression,
+                $from,
+                $to,
+                $sessionExpression,
+                $sessionExpression,
+            );
+        }
+
+        $expression = $this->_breakdownExpression($type);
+        if ($expression === null) {
             return null;
         }
 
-        return $this->_normalizeMetricRows($rows);
+        return sprintf(
+            "SELECT %s AS x, count() AS y FROM events WHERE event = '\$pageview' AND timestamp >= %s AND timestamp <= %s AND %s IS NOT NULL AND %s != '' GROUP BY x ORDER BY y DESC LIMIT 100",
+            $expression,
+            $from,
+            $to,
+            $expression,
+            $expression,
+        );
     }
 
     /**
@@ -666,11 +808,10 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      */
     private function _getEvents(int $startAt, int $endAt): ?array
     {
-        $sql = sprintf(
-            "SELECT event AS x, count() AS y FROM events WHERE timestamp >= %s AND timestamp <= %s AND NOT startsWith(event, '\$') GROUP BY event ORDER BY y DESC LIMIT 100",
-            $this->_toDateTime($startAt),
-            $this->_toDateTime($endAt),
-        );
+        $sql = $this->_breakdownSql('event', $startAt, $endAt);
+        if ($sql === null) {
+            return null;
+        }
 
         $rows = $this->_cachedQuery($sql, 'craft analytics events', 300);
 

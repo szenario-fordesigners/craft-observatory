@@ -11,23 +11,43 @@ use szenario\craftobservatory\jobs\SyncDailyStatsJob;
 use szenario\craftobservatory\jobs\SyncRecentDaysJob;
 use szenario\craftobservatory\records\DailyStats;
 use szenario\craftobservatory\records\HourlyStats;
+use szenario\craftobservatory\records\SyncState;
 use szenario\craftobservatory\Observatory;
 
 /**
  * Coordinates background syncing of historical analytics stats into the local DB.
  *
- * Every closed day is fetched exactly once — a day is considered done once it has a
- * DailyStats row, and is never re-fetched. Today is never fetched (the live widget
- * queries handle it). autoSyncMissingDays() is the render-path entry: it throttles,
- * dedupes, and queues the sync jobs. SyncRecentDaysJob fetches any unsynced days in
- * the rolling recent window (daily + hourly + events); SyncDailyStatsJob backfills
- * older unsynced days (daily + hourly) in fixed-size chunks so a large window never
- * times out a single job. The jobs are the sole writers of historical rows; render
- * paths never write inline. The jobs call back into the fetchAndStore*() / sync*()
- * routines here to do the actual fetching and persistence.
+ * Completeness is tracked per day, per *facet* (daily / breakdowns / hourly / events)
+ * in {@see SyncState}, not by "a DailyStats row exists". A facet that errors is retried
+ * on later passes, bounded by {@see self::SYNC_MAX_ATTEMPTS}; a facet that succeeds
+ * (including a legitimately empty result) is done and never re-fetched. Today is never
+ * fetched (the live widget queries handle it). autoSyncMissingDays() is the render-path
+ * entry: it throttles, dedupes, and queues the sync jobs. SyncRecentDaysJob fetches the
+ * rolling recent window (daily + breakdowns + hourly + events); SyncDailyStatsJob
+ * backfills older days (daily + breakdowns + hourly — no events) in fixed-size chunks.
+ * The jobs are the sole writers of historical rows; render paths never write inline.
+ * The jobs call back into the fetchAndStore*() / sync*() routines here.
  */
 class SyncCoordinator extends Component
 {
+    /** Sync facets — independently fetched and independently retryable units of a day. */
+    public const FACET_DAILY = 'daily';
+    public const FACET_BREAKDOWNS = 'breakdowns';
+    public const FACET_HOURLY = 'hourly';
+    public const FACET_EVENTS = 'events';
+
+    /** SyncState statuses. Absence of a row means "never attempted" (pending). */
+    public const STATUS_DONE = 'done';
+    public const STATUS_FAILED = 'failed';
+
+    /**
+     * How many times a failed facet is retried before it's left alone. Bounds retry so a
+     * structurally-broken facet (e.g. a session column a provider doesn't expose) can't
+     * re-fetch the same day forever. Successive passes are already spaced by the
+     * autoSyncMissingDays() throttle, so this needs no separate time backoff.
+     */
+    public const SYNC_MAX_ATTEMPTS = 3;
+
     /**
      * Queues a background job to sync any historical days missing from the local DB.
      * Render-path cost: cache checks, one indexed query for MAX(dateUpdated), and at most one queue insert.
@@ -141,50 +161,213 @@ class SyncCoordinator extends Component
     }
 
     /**
-     * Returns day specs for the days in the offset range [startOffset, endOffset] that
-     * have not been fetched yet — i.e. that have no DailyStats row. Today is always
-     * excluded. The DailyStats row is the single "this day is done" marker, so daily,
-     * hourly and events all sync together for a day and never re-fetch once it exists.
+     * Returns day specs for days in the offset range [startOffset, endOffset] where at
+     * least one of the given facets still needs work — never attempted, or failed and
+     * within its retry budget. Today is always excluded.
      *
+     * Facets default to all of them. Callers that only cover some facets must pass the
+     * relevant subset, or days will look perpetually unsynced: e.g. backfill never
+     * fetches events, so it must omit FACET_EVENTS.
+     *
+     * @param string[]|null $facets Subset of FACET_* to consider; null = all facets.
      * @return array<int,array{date:string,startAt:int,endAt:int}>
      */
-    public function findUnsyncedDaySpecs(string $websiteId, int $startOffset, int $endOffset): array
+    public function findUnsyncedDaySpecs(string $websiteId, int $startOffset, int $endOffset, ?array $facets = null): array
     {
+        $facets = $facets ?? self::allFacets();
         $todayStr = AnalyticsTime::dateOffset(0);
 
-        $candidates = [];
+        $dates = [];
         for ($i = $startOffset; $i <= $endOffset; $i++) {
             $ds = AnalyticsTime::dateOffset($i);
             if ($ds !== $todayStr) {
-                $candidates[$ds] = true;
+                $dates[$ds] = true;
             }
         }
 
-        if (empty($candidates)) {
+        if (empty($dates)) {
             return [];
         }
 
-        $startDateStr = min(array_keys($candidates));
-        $existing = DailyStats::find()
-            ->select(['date'])
-            ->where(['websiteId' => $websiteId])
-            ->andWhere(['>=', 'date', $startDateStr])
-            ->column();
-        foreach ($existing as $d) {
-            unset($candidates[$d]);
-        }
+        $dates = array_keys($dates);
+        $states = $this->_loadFacetStates($websiteId, min($dates), max($dates), $facets);
 
         $specs = [];
-        foreach (array_keys($candidates) as $ds) {
-            [$startAt, $endAt] = AnalyticsTime::dayBounds($ds);
-            $specs[] = ['date' => $ds, 'startAt' => $startAt, 'endAt' => $endAt];
+        foreach ($dates as $ds) {
+            foreach ($facets as $facet) {
+                if ($this->_facetNeedsWork($states["{$ds}|{$facet}"] ?? null)) {
+                    [$startAt, $endAt] = AnalyticsTime::dayBounds($ds);
+                    $specs[] = ['date' => $ds, 'startAt' => $startAt, 'endAt' => $endAt];
+                    break;
+                }
+            }
         }
 
         return $specs;
     }
 
     /**
-     * Fetches daily stats + metrics from the analytics source for the given day specs and persists them.
+     * Returns a compact freshness envelope for a closed-day offset window.
+     *
+     * `_syncing` means at least one requested facet still has retry budget left.
+     * `missingDays` includes every date where any requested facet is not done, including
+     * exhausted failures. `lastSyncedAt` is the latest successful facet update in the
+     * window, useful for "data last refreshed" UI copy.
+     *
+     * @param string[] $facets
+     * @return array{_syncing:bool,lastSyncedAt:?string,missingDays:array<int,string>}
+     */
+    public function getFreshnessForOffsets(string $websiteId, int $startOffset, int $endOffset, array $facets): array
+    {
+        $empty = ['_syncing' => false, 'lastSyncedAt' => null, 'missingDays' => []];
+
+        if ($websiteId === '' || empty($facets)) {
+            return $empty;
+        }
+
+        $startOffset = max(1, $startOffset);
+        $endOffset = max(1, $endOffset);
+        if ($startOffset > $endOffset) {
+            [$startOffset, $endOffset] = [$endOffset, $startOffset];
+        }
+
+        $dates = [];
+        for ($i = $startOffset; $i <= $endOffset; $i++) {
+            $dates[] = AnalyticsTime::dateOffset($i);
+        }
+
+        if (empty($dates)) {
+            return $empty;
+        }
+
+        $states = $this->_loadFacetStates($websiteId, min($dates), max($dates), $facets);
+        $syncing = false;
+        $missingDays = [];
+        $lastSyncedAt = null;
+
+        foreach ($dates as $date) {
+            $dayMissing = false;
+
+            foreach ($facets as $facet) {
+                $state = $states["{$date}|{$facet}"] ?? null;
+
+                if ($this->_facetNeedsWork($state)) {
+                    $syncing = true;
+                }
+
+                if ($state === null || $state->status !== self::STATUS_DONE) {
+                    $dayMissing = true;
+                    continue;
+                }
+
+                if ($lastSyncedAt === null || $state->dateUpdated > $lastSyncedAt) {
+                    $lastSyncedAt = $state->dateUpdated;
+                }
+            }
+
+            if ($dayMissing) {
+                $missingDays[] = $date;
+            }
+        }
+
+        return [
+            '_syncing' => $syncing,
+            'lastSyncedAt' => $lastSyncedAt,
+            'missingDays' => $missingDays,
+        ];
+    }
+
+    /**
+     * All sync facets. Recent-window syncs cover all of them; backfill omits events.
+     *
+     * @return string[]
+     */
+    public static function allFacets(): array
+    {
+        return [self::FACET_DAILY, self::FACET_BREAKDOWNS, self::FACET_HOURLY, self::FACET_EVENTS];
+    }
+
+    /**
+     * Loads SyncState rows for a date range + facet set, keyed "date|facet".
+     *
+     * @param string[] $facets
+     * @return array<string,SyncState>
+     */
+    private function _loadFacetStates(string $websiteId, string $startDate, string $endDate, array $facets): array
+    {
+        /** @var SyncState[] $rows */
+        $rows = SyncState::find()
+            ->where(['websiteId' => $websiteId, 'facet' => $facets])
+            ->andWhere(['>=', 'date', $startDate])
+            ->andWhere(['<=', 'date', $endDate])
+            ->all();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map["{$row->date}|{$row->facet}"] = $row;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Whether a facet still needs fetching: never attempted, or failed under the cap.
+     * A successful facet (status done, including a legitimately empty result) is finished.
+     */
+    private function _facetNeedsWork(?SyncState $state): bool
+    {
+        if ($state === null) {
+            return true;
+        }
+        if ($state->status === self::STATUS_DONE) {
+            return false;
+        }
+
+        return (int) $state->attempts < self::SYNC_MAX_ATTEMPTS;
+    }
+
+    /**
+     * Records the outcome of a facet fetch for a day. Success marks it done; failure flips
+     * it to failed and bumps the attempt count (which the retry budget caps).
+     */
+    private function _markFacet(string $websiteId, string $date, string $facet, bool $success): void
+    {
+        $state = SyncState::findOne([
+            'websiteId' => $websiteId,
+            'date' => $date,
+            'facet' => $facet,
+        ]);
+
+        if ($state === null) {
+            $state = new SyncState();
+            $state->websiteId = $websiteId;
+            $state->date = $date;
+            $state->facet = $facet;
+            $state->attempts = 0;
+        }
+
+        if ($success) {
+            $state->status = self::STATUS_DONE;
+        } else {
+            $state->status = self::STATUS_FAILED;
+            $state->attempts = (int) $state->attempts + 1;
+        }
+
+        if (!$state->save()) {
+            Craft::error("Failed to save sync state for {$date}/{$facet}: " . json_encode($state->getErrors()), __METHOD__);
+        }
+    }
+
+    /**
+     * Fetches daily totals + breakdowns and persists them, tracking the `daily` and
+     * `breakdowns` facets independently.
+     *
+     * Daily totals and breakdowns are fetched in one batch but can fail apart, so each is
+     * marked on its own: totals succeeding lets the daily row (and the mirror-backed chart
+     * and KPIs) land even when breakdowns errored, and the breakdowns facet is left to
+     * retry. A day whose breakdowns errored entirely still saves its totals; the empty
+     * `metrics` is refilled when the breakdowns facet retries. Days where both facets are
+     * already done/exhausted are skipped before the provider is even called.
      *
      * @param array<int,array{date:string,startAt:int,endAt:int}> $daySpecs
      * @param callable|null $onProgress fn(int $done, int $total): void — called after each day.
@@ -196,28 +379,53 @@ class SyncCoordinator extends Component
             return ['synced' => 0, 'failed' => 0];
         }
 
-        $plugin = Observatory::getInstance();
-        $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
-        $batch = $plugin->analytics->getDailyStatsAndBreakdownsBatch($daySpecs, $metricsTypes);
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
+        if (empty($websiteId)) {
+            return ['synced' => 0, 'failed' => 0];
+        }
 
-        $total = \count($daySpecs);
+        $todo = $this->_facetTodo($websiteId, $daySpecs, [self::FACET_DAILY, self::FACET_BREAKDOWNS]);
+        if (empty($todo)) {
+            return ['synced' => 0, 'failed' => 0];
+        }
+
+        $plugin = Observatory::getInstance();
+        $batch = $plugin->analytics->getDailyStatsAndBreakdownsBatch($todo, Observatory::MIRRORED_METRIC_TYPES);
+
+        $total = \count($todo);
         $done = 0;
         $synced = 0;
         $failed = 0;
-        foreach ($daySpecs as $day) {
+        foreach ($todo as $day) {
             $ds = $day['date'];
             $row = $batch[$ds] ?? null;
             $stats = $row['stats'] ?? null;
             $errors = $row['errors'] ?? [];
+            $metrics = $row['metrics'] ?? [];
 
             if (empty($stats)) {
+                // No totals → neither facet advanced; both retry.
+                $this->_markFacet($websiteId, $ds, self::FACET_DAILY, false);
+                $this->_markFacet($websiteId, $ds, self::FACET_BREAKDOWNS, false);
                 $failed++;
                 $reason = $errors ? implode('; ', $errors) : 'empty stats response';
                 Craft::warning("fetchAndStoreDailyStats: failed for {$ds} — {$reason}", 'observatory');
-            } elseif ($this->syncDailyStats($ds, $stats, $row['metrics'] ?? [])) {
+            } elseif ($this->syncDailyStats($ds, $stats, $metrics)) {
+                // Totals landed → daily done. When stats are present, the only errors the
+                // batch reports are breakdown failures, so empty($errors) means breakdowns
+                // are complete.
+                $this->_markFacet($websiteId, $ds, self::FACET_DAILY, true);
+                $breakdownsOk = empty($errors);
+                $this->_markFacet($websiteId, $ds, self::FACET_BREAKDOWNS, $breakdownsOk);
                 $synced++;
-                Craft::debug("fetchAndStoreDailyStats: saved {$ds}.", 'observatory');
+                if (!$breakdownsOk) {
+                    Craft::warning("fetchAndStoreDailyStats: {$ds} totals saved; breakdowns incomplete (" . implode('; ', $errors) . ') — will retry.', 'observatory');
+                } else {
+                    Craft::debug("fetchAndStoreDailyStats: saved {$ds}.", 'observatory');
+                }
             } else {
+                $this->_markFacet($websiteId, $ds, self::FACET_DAILY, false);
+                $this->_markFacet($websiteId, $ds, self::FACET_BREAKDOWNS, false);
                 $failed++;
                 Craft::warning("fetchAndStoreDailyStats: DB save failed for {$ds}.", 'observatory');
             }
@@ -232,10 +440,38 @@ class SyncCoordinator extends Component
     }
 
     /**
-     * Fetches hourly pageviews from the analytics source for the given day specs and persists them.
+     * Filters day specs down to those where at least one of the given facets still needs
+     * work, so a fetch pass skips days already done/exhausted for its facet(s).
      *
-     * Days with no hourly rows (zero-traffic days) are a no-op and counted as neither
-     * synced nor failed; `failed` reflects only days whose DB write actually failed.
+     * @param array<int,array{date:string,startAt:int,endAt:int}> $daySpecs
+     * @param string[] $facets
+     * @return array<int,array{date:string,startAt:int,endAt:int}>
+     */
+    private function _facetTodo(string $websiteId, array $daySpecs, array $facets): array
+    {
+        $dates = array_column($daySpecs, 'date');
+        if (empty($dates)) {
+            return [];
+        }
+
+        $states = $this->_loadFacetStates($websiteId, min($dates), max($dates), $facets);
+
+        return array_values(array_filter($daySpecs, function (array $day) use ($states, $facets): bool {
+            foreach ($facets as $facet) {
+                if ($this->_facetNeedsWork($states["{$day['date']}|{$facet}"] ?? null)) {
+                    return true;
+                }
+            }
+            return false;
+        }));
+    }
+
+    /**
+     * Fetches hourly pageviews and persists them, tracking the `hourly` facet.
+     *
+     * A day whose fetch errored is omitted by the source (key absent) → facet failed,
+     * retried later. A present day with no rows is a real zero-traffic day → facet done,
+     * no DB write. Days already done/exhausted for `hourly` are skipped up front.
      *
      * @param array<int,array{date:string,startAt:int,endAt:int}> $daySpecs
      * @param callable|null $onProgress fn(int $done, int $total): void — called after each day.
@@ -247,22 +483,41 @@ class SyncCoordinator extends Component
             return ['synced' => 0, 'failed' => 0];
         }
 
-        $plugin = Observatory::getInstance();
-        $hourlyBatch = $plugin->analytics->getHourlyPageviewsBatch($daySpecs);
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
+        if (empty($websiteId)) {
+            return ['synced' => 0, 'failed' => 0];
+        }
 
-        $total = \count($daySpecs);
+        $todo = $this->_facetTodo($websiteId, $daySpecs, [self::FACET_HOURLY]);
+        if (empty($todo)) {
+            return ['synced' => 0, 'failed' => 0];
+        }
+
+        $plugin = Observatory::getInstance();
+        $hourlyBatch = $plugin->analytics->getHourlyPageviewsBatch($todo);
+
+        $total = \count($todo);
         $done = 0;
         $synced = 0;
         $failed = 0;
-        foreach ($daySpecs as $day) {
-            $hourlyRows = $hourlyBatch[$day['date']] ?? [];
-            if (!empty($hourlyRows)) {
-                if ($this->syncHourlyStats($day['date'], $hourlyRows)) {
-                    $synced++;
-                } else {
-                    $failed++;
-                }
+        foreach ($todo as $day) {
+            $ds = $day['date'];
+
+            if (!\array_key_exists($ds, $hourlyBatch)) {
+                // Fetch errored for this day — retry on a later pass.
+                $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, false);
+                $failed++;
+            } elseif (empty($hourlyBatch[$ds])) {
+                // Real zero-traffic day — nothing to store, but the facet is done.
+                $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, true);
+            } elseif ($this->syncHourlyStats($ds, $hourlyBatch[$ds])) {
+                $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, true);
+                $synced++;
+            } else {
+                $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, false);
+                $failed++;
             }
+
             $done++;
             if ($onProgress !== null) {
                 $onProgress($done, $total);
@@ -273,8 +528,11 @@ class SyncCoordinator extends Component
     }
 
     /**
-     * Fetches top events from the analytics source for the given day specs and refreshes the local rows.
-     * A failed fetch for a day leaves that day's existing rows intact rather than wiping them.
+     * Fetches top events and refreshes the local rows, tracking the `events` facet.
+     *
+     * A failed fetch (key absent) leaves the day's existing rows intact and the facet
+     * failed → retried later. A present day (including no events) is stored and done.
+     * Days already done/exhausted for `events` are skipped up front.
      *
      * @param array<int,array{date:string,startAt:int,endAt:int}> $daySpecs
      * @return array{synced:int,failed:int}
@@ -285,21 +543,34 @@ class SyncCoordinator extends Component
             return ['synced' => 0, 'failed' => 0];
         }
 
+        $websiteId = Observatory::getInstance()->analytics->getStorageKey();
+        if (empty($websiteId)) {
+            return ['synced' => 0, 'failed' => 0];
+        }
+
+        $todo = $this->_facetTodo($websiteId, $daySpecs, [self::FACET_EVENTS]);
+        if (empty($todo)) {
+            return ['synced' => 0, 'failed' => 0];
+        }
+
         $plugin = Observatory::getInstance();
-        $eventsBatch = $plugin->analytics->getEventsBatch($daySpecs);
+        $eventsBatch = $plugin->analytics->getEventsBatch($todo);
 
         $synced = 0;
         $failed = 0;
-        foreach ($daySpecs as $day) {
+        foreach ($todo as $day) {
             $ds = $day['date'];
             if (!\array_key_exists($ds, $eventsBatch)) {
+                $this->_markFacet($websiteId, $ds, self::FACET_EVENTS, false);
                 $failed++;
                 Craft::warning("fetchAndStoreEvents: events fetch failed for {$ds} — leaving existing rows intact.", 'observatory');
                 continue;
             }
             if ($this->syncDailyEvents($ds, $eventsBatch[$ds])) {
+                $this->_markFacet($websiteId, $ds, self::FACET_EVENTS, true);
                 $synced++;
             } else {
+                $this->_markFacet($websiteId, $ds, self::FACET_EVENTS, false);
                 $failed++;
             }
         }

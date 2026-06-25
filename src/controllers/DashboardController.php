@@ -3,7 +3,9 @@
 namespace szenario\craftobservatory\controllers;
 
 use craft\web\Controller;
+use szenario\craftobservatory\helpers\AnalyticsTime;
 use szenario\craftobservatory\records\DailyEvents;
+use szenario\craftobservatory\services\SyncCoordinator;
 use szenario\craftobservatory\Observatory;
 use yii\web\Response;
 
@@ -11,6 +13,7 @@ class DashboardController extends Controller
 {
     private const DEFAULT_METRIC_TYPES = ['url', 'entry', 'exit', 'referrer', 'channel', 'browser', 'os', 'device', 'country', 'region', 'city'];
     private const ALLOWED_PAGEVIEW_UNITS = ['hour', 'day', 'month', 'year'];
+    private const MAX_CP_FRESHNESS_DAYS = 366;
 
     /**
      * Returns a 7×24 heatmap of average visitor counts by weekday and hour of day.
@@ -29,8 +32,13 @@ class DashboardController extends Controller
         // Any unsynced closed day in the window means a sync job is still pending —
         // signal the client so it can poll until the historical mirror is complete.
         $websiteId = $plugin->analytics->getStorageKey();
+        // The heatmap is built from the daily + hourly mirror (events don't apply over this
+        // window), so its "still syncing" flag tracks only those facets.
         $syncing = !empty($websiteId)
-            && !empty($plugin->sync->findUnsyncedDaySpecs($websiteId, 1, $days));
+            && !empty($plugin->sync->findUnsyncedDaySpecs($websiteId, 1, $days, [
+                SyncCoordinator::FACET_DAILY,
+                SyncCoordinator::FACET_HOURLY,
+            ]));
 
         return $this->asJson($plugin->stats->getHeatmapData($days) + [
             '_syncing' => $syncing,
@@ -101,12 +109,21 @@ class DashboardController extends Controller
 
         \Craft::$app->getSession()->close();
         $plugin = Observatory::getInstance();
-        $metrics = $plugin->analytics->getBreakdowns($startAt, $endAt, self::DEFAULT_METRIC_TYPES);
+        $closedDayOffsets = $this->closedDayOffsetsForRange($startAt, $endAt);
+        $plugin->sync->autoSyncMissingDays($closedDayOffsets[1] ?? 30);
+
+        // Breakdowns are served from the local mirror (closed days) + today live; totals
+        // stay live, since unique-visitor counts can't be summed per-day.
+        $metrics = $plugin->stats->getRangeBreakdowns(self::DEFAULT_METRIC_TYPES, $startAt, $endAt);
+        $freshness = $this->dashboardFreshnessEnvelope($plugin, $closedDayOffsets, $unit, $includePageviews);
 
         return $this->asJson([
-            'pageviews' => $includePageviews ? $plugin->analytics->getPageviews($startAt, $endAt, $unit) : null,
+            'pageviews' => $includePageviews ? $plugin->stats->getRangePageviews($startAt, $endAt, $unit) : null,
             'stats' => $plugin->analytics->getTotals($startAt, $endAt),
             'metrics' => $metrics,
+            '_syncing' => $freshness['_syncing'],
+            'lastSyncedAt' => $freshness['lastSyncedAt'],
+            'missingDays' => $freshness['missingDays'],
             '_status' => $plugin->analytics->getStatus(),
         ]);
     }
@@ -126,11 +143,9 @@ class DashboardController extends Controller
         }
 
         \Craft::$app->getSession()->close();
-        $pageviews = Observatory::getInstance()->analytics->getPageviews(
-            $startAt,
-            $endAt,
-            $unit
-        );
+        $plugin = Observatory::getInstance();
+        $plugin->sync->autoSyncMissingDays();
+        $pageviews = $plugin->stats->getRangePageviews($startAt, $endAt, $unit);
 
         return $this->asJson($pageviews);
     }
@@ -170,13 +185,16 @@ class DashboardController extends Controller
 
         \Craft::$app->getSession()->close();
 
+        $plugin = Observatory::getInstance();
+        $plugin->sync->autoSyncMissingDays();
+
         if ($typesParams) {
             $types = $this->normalizeMetricTypes(explode(',', (string) $typesParams));
             if (empty($types)) {
                 return $this->asFailure('Invalid metric type(s)', ['error' => 'Invalid metric type(s)']);
             }
 
-            return $this->asJson(Observatory::getInstance()->analytics->getBreakdowns($startAt, $endAt, $types));
+            return $this->asJson($plugin->stats->getRangeBreakdowns($types, $startAt, $endAt));
         }
 
         $types = $this->normalizeMetricTypes([(string) $typeParam]);
@@ -184,15 +202,10 @@ class DashboardController extends Controller
             return $this->asFailure('Invalid metric type', ['error' => 'Invalid metric type']);
         }
 
-        $plugin = Observatory::getInstance();
-        $metrics = $plugin->analytics->getBreakdown(
-            $startAt,
-            $endAt,
-            $types[0]
-        );
+        $metrics = $plugin->stats->getRangeBreakdown($types[0], $startAt, $endAt);
 
         return $this->asJson([
-            'data' => $metrics ?? [],
+            'data' => $metrics,
             '_status' => $plugin->analytics->getStatus(),
         ]);
     }
@@ -260,7 +273,9 @@ class DashboardController extends Controller
 
         // Any unsynced day inside the events window means the closed-days half of
         // the totals is still incomplete — flag the client so it polls until done.
-        $syncing = !empty($plugin->sync->findUnsyncedDaySpecs($websiteId, 1, $closedDays));
+        $syncing = !empty($plugin->sync->findUnsyncedDaySpecs($websiteId, 1, $closedDays, [
+            SyncCoordinator::FACET_EVENTS,
+        ]));
 
         return $this->asJson([
             'data' => $data,
@@ -311,6 +326,72 @@ class DashboardController extends Controller
         $bucketMs = self::RANGE_BUCKET_SECONDS * 1000;
 
         return intdiv($ms, $bucketMs) * $bucketMs;
+    }
+
+    /**
+     * Converts a timestamp range into closed-day offsets from today.
+     *
+     * The CP's "all time" range starts at Unix epoch, which would enqueue decades of
+     * work on old sites. Cap freshness/sync coverage to a practical one-year window for
+     * that unbounded case; explicit finite ranges keep their actual span.
+     *
+     * @return array{0:int,1:int}|null [nearest closed-day offset, furthest closed-day offset]
+     */
+    private function closedDayOffsetsForRange(int $startAt, int $endAt): ?array
+    {
+        $tz = AnalyticsTime::appTimeZone();
+        $today = new \DateTimeImmutable('today', $tz);
+        $yesterday = $today->modify('-1 day');
+
+        $startDate = (new \DateTimeImmutable('@' . intdiv($startAt, 1000)))->setTimezone($tz)->setTime(0, 0);
+        $endDate = (new \DateTimeImmutable('@' . intdiv($endAt, 1000)))->setTimezone($tz)->setTime(0, 0);
+
+        if ($startAt <= 0) {
+            $startDate = $today->modify('-' . self::MAX_CP_FRESHNESS_DAYS . ' days');
+        }
+
+        if ($endDate > $yesterday) {
+            $endDate = $yesterday;
+        }
+
+        if ($startDate > $endDate) {
+            return null;
+        }
+
+        $nearestOffset = max(1, (int) $endDate->diff($today)->days);
+        $furthestOffset = max(1, (int) $startDate->diff($today)->days);
+
+        if ($nearestOffset > self::MAX_CP_FRESHNESS_DAYS) {
+            return null;
+        }
+
+        return [$nearestOffset, min($furthestOffset, self::MAX_CP_FRESHNESS_DAYS)];
+    }
+
+    /**
+     * @param array{0:int,1:int}|null $closedDayOffsets
+     * @return array{_syncing:bool,lastSyncedAt:?string,missingDays:array<int,string>}
+     */
+    private function dashboardFreshnessEnvelope(Observatory $plugin, ?array $closedDayOffsets, string $unit, bool $includePageviews): array
+    {
+        $empty = ['_syncing' => false, 'lastSyncedAt' => null, 'missingDays' => []];
+        $websiteId = $plugin->analytics->getStorageKey();
+
+        if (empty($websiteId) || $closedDayOffsets === null) {
+            return $empty;
+        }
+
+        $facets = [SyncCoordinator::FACET_BREAKDOWNS];
+        if ($includePageviews && ($unit === 'day' || $unit === 'month')) {
+            $facets[] = SyncCoordinator::FACET_DAILY;
+        }
+
+        return $plugin->sync->getFreshnessForOffsets(
+            $websiteId,
+            $closedDayOffsets[0],
+            $closedDayOffsets[1],
+            array_values(array_unique($facets)),
+        );
     }
 
     private function normalizePageviewUnit(mixed $unit): ?string

@@ -26,7 +26,11 @@ class Install extends Migration
                 'visitors' => $this->integer()->notNull()->defaultValue(0),
                 'visits' => $this->integer()->notNull()->defaultValue(0),
                 'sessionDurationSeconds' => $this->integer()->notNull()->defaultValue(0),
-                'metrics' => $this->text(),
+                // Holds a JSON map of per-type breakdowns (one top-100 list per dimension
+                // in Observatory::MIRRORED_METRIC_TYPES). mediumText, not text: a dozen
+                // dimensions of long URLs blows past TEXT's 64KB ceiling, which MySQL
+                // truncates silently and corrupts the JSON.
+                'metrics' => $this->mediumText(),
                 'dateCreated' => $this->dateTime()->notNull(),
                 'dateUpdated' => $this->dateTime()->notNull(),
                 'uid' => $this->uid(),
@@ -59,6 +63,25 @@ class Install extends Migration
             $this->createIndex(null, '{{%observatory_daily_events}}', ['websiteId', 'date', 'eventName'], true);
         }
 
+        if ($schema->getTableSchema('{{%observatory_sync_state}}') === null) {
+            // Per-day, per-facet completeness marker (daily / breakdowns / hourly / events).
+            // Replaces "a DailyStats row exists" so partial failures can be retried per
+            // facet, bounded by an attempt cap, instead of freezing the whole day.
+            $this->createTable('{{%observatory_sync_state}}', [
+                'id' => $this->primaryKey(),
+                'websiteId' => $this->string()->notNull(),
+                'date' => $this->date()->notNull(),
+                'facet' => $this->string()->notNull(),
+                'status' => $this->string()->notNull(),
+                'attempts' => $this->smallInteger()->unsigned()->notNull()->defaultValue(0),
+                'dateCreated' => $this->dateTime()->notNull(),
+                'dateUpdated' => $this->dateTime()->notNull(),
+                'uid' => $this->uid(),
+            ]);
+
+            $this->createIndex(null, '{{%observatory_sync_state}}', ['websiteId', 'date', 'facet'], true);
+        }
+
         if (Craft::$app->db->schema->getTableSchema('{{%observatory_hourly_stats}}') === null) {
             $this->createTable('{{%observatory_hourly_stats}}', [
                 'id' => $this->primaryKey(),
@@ -85,6 +108,7 @@ class Install extends Migration
     {
         $this->dropTableIfExists('{{%observatory_daily_events}}');
         $this->dropTableIfExists('{{%observatory_hourly_stats}}');
+        $this->dropTableIfExists('{{%observatory_sync_state}}');
         $this->dropTableIfExists('{{%observatory_daily_stats}}');
         return true;
     }

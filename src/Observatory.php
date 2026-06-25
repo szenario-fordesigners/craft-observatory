@@ -40,6 +40,23 @@ class Observatory extends Plugin
      */
     public const EVENTS_CLOSED_DAYS = 6;
 
+    /**
+     * Breakdown dimensions persisted per closed day in the local mirror
+     * (`observatory_daily_stats.metrics`).
+     *
+     * Drives two things that must stay in lockstep: which breakdowns SyncCoordinator
+     * fetches for each closed day, and which ones StatsReport may serve from the mirror
+     * instead of querying the provider live. A type absent here is always fetched live.
+     *
+     * Only count-summable dimensions belong here — summing daily pageview/session counts
+     * per label across days is correct. Unique-visitor style metrics are NOT summable and
+     * must never be mirror-served (see StatsReport::getRangeBreakdowns()).
+     */
+    public const MIRRORED_METRIC_TYPES = [
+        'url', 'title', 'entry', 'exit', 'referrer', 'channel',
+        'browser', 'os', 'device', 'country', 'region', 'city',
+    ];
+
     public string $schemaVersion = '1.0.0';
     public bool $hasCpSettings = true;
     public bool $hasCpSection = true;
