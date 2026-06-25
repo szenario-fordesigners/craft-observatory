@@ -383,8 +383,8 @@ class DashboardController extends Controller
         }
 
         $facets = [SyncCoordinator::FACET_BREAKDOWNS];
-        if ($includePageviews && ($unit === 'day' || $unit === 'month')) {
-            $facets[] = SyncCoordinator::FACET_DAILY;
+        if ($includePageviews) {
+            $facets[] = $unit === 'hour' ? SyncCoordinator::FACET_HOURLY : SyncCoordinator::FACET_DAILY;
         }
 
         return $plugin->sync->getFreshnessForOffsets(

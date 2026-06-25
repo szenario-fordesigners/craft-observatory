@@ -471,14 +471,10 @@ class StatsReport extends Component
     /**
      * Mirror-aware pageview/session time series for a date range.
      *
-     * Day- and month-granularity ranges are served from `observatory_daily_stats`:
-     * closed days are bucketed (per day, or summed per calendar month) and today is
-     * folded in live. This turns a full-range provider scan into one DB read plus one
-     * today query, regardless of range length. Pageview and session *counts* sum
+     * Hour, day, and month granularity are served from the mirror for closed days, with
+     * today folded in live. This turns full-range provider scans into one DB read plus
+     * one today query, regardless of range length. Pageview and session *counts* sum
      * correctly across days, which is why both series can be aggregated this way.
-     *
-     * Hour granularity stays live — those ranges are only a day or two, so the live
-     * query is already cheap and per-hour rows aren't kept in this table.
      *
      * Buckets are emitted as local-midnight datetime strings (day → that day, month →
      * the 1st) so they share the browser's timezone with the live today point;
@@ -491,8 +487,8 @@ class StatsReport extends Component
     {
         $analytics = Observatory::getInstance()->analytics;
 
-        // Only day/month granularity is mirror-served; hour (and anything else) stays live.
-        if ($unit !== 'day' && $unit !== 'month') {
+        // Only hour/day/month granularity is mirror-served; anything else stays live.
+        if ($unit !== 'hour' && $unit !== 'day' && $unit !== 'month') {
             return $analytics->getPageviews($startAt, $endAt, $unit);
         }
 
@@ -506,14 +502,18 @@ class StatsReport extends Component
         $startDateStr = (new \DateTimeImmutable('@' . intdiv($startAt, 1000)))->setTimezone($tz)->format('Y-m-d');
         $endDateStr = (new \DateTimeImmutable('@' . intdiv($endAt, 1000)))->setTimezone($tz)->format('Y-m-d');
 
-        // Bucket closed days into pv[key]/ss[key]. Keys sort chronologically as strings
-        // ('Y-m-d' or 'Y-m'), so ksort gives the series in order.
+        // Bucket closed rows into pv[key]/ss[key]. Keys sort chronologically as strings
+        // ('Y-m-d H:00:00', 'Y-m-d', or 'Y-m'), so ksort gives the series in order.
         $pv = [];
         $ss = [];
-        $addToBucket = static function (string $dateStr, int $pageviews, int $sessions) use (&$pv, &$ss, $unit): void {
+        $addToBucket = static function (string $dateStr, int $pageviews, int $sessions, ?int $hour = null) use (&$pv, &$ss, $unit): void {
             if ($unit === 'month') {
                 $key = substr($dateStr, 0, 7);
                 $ts = $key . '-01 00:00:00';
+            } elseif ($unit === 'hour') {
+                $hour = max(0, min(23, $hour ?? 0));
+                $key = sprintf('%s %02d', $dateStr, $hour);
+                $ts = sprintf('%s %02d:00:00', $dateStr, $hour);
             } else {
                 $key = $dateStr;
                 $ts = $dateStr . ' 00:00:00';
@@ -526,29 +526,55 @@ class StatsReport extends Component
             $ss[$key]['y'] += $sessions;
         };
 
-        /** @var DailyStats[] $records */
-        $records = DailyStats::find()
-            ->where(['websiteId' => $websiteId])
-            ->andWhere(['>=', 'date', $startDateStr])
-            ->andWhere(['<=', 'date', $endDateStr])
-            ->andWhere(['<', 'date', $todayStr])
-            ->all();
+        if ($unit === 'hour') {
+            /** @var HourlyStats[] $records */
+            $records = HourlyStats::find()
+                ->where(['websiteId' => $websiteId])
+                ->andWhere(['>=', 'date', $startDateStr])
+                ->andWhere(['<=', 'date', $endDateStr])
+                ->andWhere(['<', 'date', $todayStr])
+                ->all();
 
-        foreach ($records as $record) {
-            $addToBucket($record->date, (int) $record->pageviews, (int) $record->visits);
+            foreach ($records as $record) {
+                $addToBucket($record->date, (int) $record->pageviews, (int) $record->visitors, (int) $record->hour);
+            }
+        } else {
+            /** @var DailyStats[] $records */
+            $records = DailyStats::find()
+                ->where(['websiteId' => $websiteId])
+                ->andWhere(['>=', 'date', $startDateStr])
+                ->andWhere(['<=', 'date', $endDateStr])
+                ->andWhere(['<', 'date', $todayStr])
+                ->all();
+
+            foreach ($records as $record) {
+                $addToBucket($record->date, (int) $record->pageviews, (int) $record->visits);
+            }
         }
 
-        // Fold today live into its bucket (its own day, or the current month).
+        // Fold today live into its bucket(s).
         if ($endDateStr >= $todayStr) {
             [$todayStart] = AnalyticsTime::dayBounds($todayStr);
             $todayStart = max($todayStart, $startAt);
 
             if ($endAt > $todayStart) {
-                $today = $analytics->getPageviews($todayStart, $endAt, 'day');
-                $todayPv = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $today['pageviews'] ?? []));
-                $todaySs = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $today['sessions'] ?? []));
-                if ($todayPv > 0 || $todaySs > 0) {
-                    $addToBucket($todayStr, $todayPv, $todaySs);
+                $today = $analytics->getPageviews($todayStart, $endAt, $unit === 'hour' ? 'hour' : 'day');
+                if ($unit === 'hour') {
+                    $todaySessions = $this->_seriesByHour($today['sessions'] ?? [], $tz);
+                    foreach ($today['pageviews'] ?? [] as $point) {
+                        $ts = (string) ($point['t'] ?? $point['x'] ?? '');
+                        if ($ts === '') {
+                            continue;
+                        }
+                        $hour = (int) (new \DateTimeImmutable($ts))->setTimezone($tz)->format('G');
+                        $addToBucket($todayStr, (int) ($point['y'] ?? 0), $todaySessions[$hour] ?? 0, $hour);
+                    }
+                } else {
+                    $todayPv = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $today['pageviews'] ?? []));
+                    $todaySs = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $today['sessions'] ?? []));
+                    if ($todayPv > 0 || $todaySs > 0) {
+                        $addToBucket($todayStr, $todayPv, $todaySs);
+                    }
                 }
             }
         }
@@ -557,6 +583,25 @@ class StatsReport extends Component
         ksort($ss);
 
         return ['pageviews' => array_values($pv), 'sessions' => array_values($ss)];
+    }
+
+    /**
+     * @param array<int,array{x?:string,t?:string,y:int|string}> $series
+     * @return array<int,int>
+     */
+    private function _seriesByHour(array $series, \DateTimeZone $tz): array
+    {
+        $indexed = [];
+        foreach ($series as $point) {
+            $ts = (string) ($point['t'] ?? $point['x'] ?? '');
+            if ($ts === '') {
+                continue;
+            }
+            $hour = (int) (new \DateTimeImmutable($ts))->setTimezone($tz)->format('G');
+            $indexed[$hour] = (int) ($point['y'] ?? 0);
+        }
+
+        return $indexed;
     }
 
     /**

@@ -34,7 +34,7 @@ All endpoints live in `src/controllers/DashboardController.php`.
 |---|---|---|
 | `get-dashboard-data` | CP page | **Mirror** breakdowns + **mirror** pageviews (day unit); optional **live** totals |
 | `get-metrics` | Countries / Referrers / Devices / WorldMap | **Mirror** breakdown(s) + today live |
-| `get-pageviews` | (chart, currently via get-dashboard-data) | **Mirror** (day + month units) + today live; **live** for hour |
+| `get-pageviews` | (chart, currently via get-dashboard-data) | **Mirror** (hour + day + month units) + today live |
 | `get-heatmap-data` | Heatmap | **Mirror** (`HourlyStats`), 90 days |
 | `get-top-events` | Events | **Mirror** (`DailyEvents`) + today live |
 | `get-widget-summary` | Visitors | **Live** week totals + DB daily series |
@@ -104,13 +104,13 @@ regardless of range length — and stays correct on a cold cache, not just withi
 TTL window. `get-dashboard-data` and `get-metrics` both route through it.
 
 The pageview **time series** (`StatsReport::getRangePageviews()`) gets the same
-treatment for `unit=day` and `unit=month`: closed days come from
-`observatory_daily_stats` (per-day pageviews + sessions), bucketed by day or summed
-per calendar month, with today folded in live (into its own day, or the current
-month). Only `unit=hour` stays live — those ranges are a day or two and per-hour rows
-aren't kept in this table. Buckets are emitted as local-midnight datetime strings
-(day → that day, month → the 1st) so the mirror buckets and the live today point share
-the browser timezone the chart parses with.
+treatment for `unit=hour`, `unit=day`, and `unit=month`: closed hours/days come from
+`observatory_hourly_stats` or `observatory_daily_stats`, with today folded in live.
+Day rows are bucketed by day or summed per calendar month; hourly rows emit one bucket
+per local hour. This means "Last 24 hours" reuses yesterday's local hourly mirror and
+only live-fetches today's hourly tail. Buckets are emitted as local datetime strings so
+the mirror buckets and the live today points share the browser timezone the chart parses
+with.
 
 ### Correctness constraints (why it's not "mirror everything")
 
@@ -197,10 +197,10 @@ bloat for a failure that's rarely per-dimension-independent).
 ### Step 3 — CP freshness envelope _(done for the CP page)_
 
 The CP `get-dashboard-data` response returns `{_syncing, lastSyncedAt, missingDays}`
-for the closed-day facets it actually uses: `breakdowns`, plus `daily` when the chart
-is served from the mirror (`unit=day|month`). The CP page shows a "still syncing /
-data incomplete" state and polls quietly while retryable work remains. The heatmap
-already exposes `_syncing` and now polls on the CP page too.
+for the closed-day facets it actually uses: `breakdowns`, plus `hourly` for hourly
+charts or `daily` for day/month charts. The CP page shows a "still syncing / data
+incomplete" state and polls quietly while retryable work remains. The heatmap already
+exposes `_syncing` and now polls on the CP page too.
 
 Still open: extend the same envelope to standalone breakdown widget endpoints, which
 currently render partial mirror data without `lastSyncedAt` / `missingDays`.
