@@ -155,6 +155,11 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             return $this->_getEvents($startAt, $endAt);
         }
 
+        $sessionExpression = $this->_sessionBreakdownExpression($type);
+        if ($sessionExpression !== null) {
+            return $this->_getSessionBreakdown($startAt, $endAt, $type, $sessionExpression, $cacheDuration);
+        }
+
         $expression = $this->_breakdownExpression($type);
         if ($expression === null) {
             return [];
@@ -485,6 +490,58 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             'year' => 'toStartOfYear(timestamp)',
             default => null,
         };
+    }
+
+    /**
+     * Returns the HogQL session-property expression for a session-scoped breakdown
+     * type, or null when the type is event-scoped.
+     *
+     * Entry page, exit page and channel are properties of a *session*, not of any
+     * single pageview, so they live on PostHog's `sessions` table and are queried by
+     * {@see self::_getSessionBreakdown()} rather than the events path.
+     *
+     * @author szenario
+     * @since 1.0.0
+     */
+    private function _sessionBreakdownExpression(string $type): ?string
+    {
+        return match ($type) {
+            'entry' => "coalesce(nullIf(\$entry_pathname, ''), \$entry_current_url)",
+            'exit' => "coalesce(nullIf(\$end_pathname, ''), \$end_current_url)",
+            'channel' => '$channel_type',
+            default => null,
+        };
+    }
+
+    /**
+     * Runs a session-scoped breakdown against PostHog's `sessions` table.
+     *
+     * Mirrors {@see self::getBreakdown()}'s event path but counts sessions over the
+     * `$start_timestamp` window instead of pageviews, so a row's count answers
+     * "how many sessions" for that entry page / exit page / channel.
+     *
+     * @return array<int,array{x:string,y:int}>|null
+     *
+     * @author szenario
+     * @since 1.0.0
+     */
+    private function _getSessionBreakdown(int $startAt, int $endAt, string $type, string $expression, int $cacheDuration): ?array
+    {
+        $sql = sprintf(
+            "SELECT %s AS x, count() AS y FROM sessions WHERE \$start_timestamp >= %s AND \$start_timestamp <= %s AND %s IS NOT NULL AND %s != '' GROUP BY x ORDER BY y DESC LIMIT 100",
+            $expression,
+            $this->_toDateTime($startAt),
+            $this->_toDateTime($endAt),
+            $expression,
+            $expression,
+        );
+
+        $rows = $this->_cachedQuery($sql, "craft analytics {$type} breakdown", $cacheDuration);
+        if ($rows === null) {
+            return null;
+        }
+
+        return $this->_normalizeMetricRows($rows);
     }
 
     /**
