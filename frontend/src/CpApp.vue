@@ -57,6 +57,8 @@ interface DashboardDataResponse {
 let dashboardAbortController: AbortController | null = null;
 let dashboardRequestId = 0;
 let dashboardPollTimer: ReturnType<typeof setInterval> | null = null;
+let statsAbortController: AbortController | null = null;
+let statsRequestId = 0;
 
 const stopDashboardPolling = () => {
   if (dashboardPollTimer) {
@@ -93,7 +95,6 @@ const fetchDashboardData = async (includePageviews = true, showLoading = true) =
   dashboardAbortController = abortController;
 
   if (showLoading) {
-    statsLoading.value = true;
     metricsLoading.value = true;
   }
 
@@ -106,6 +107,7 @@ const fetchDashboardData = async (includePageviews = true, showLoading = true) =
     url.searchParams.append('endAt', currentRange.value.endAt.toString());
     url.searchParams.append('unit', currentRange.value.unit);
     url.searchParams.append('includePageviews', includePageviews ? '1' : '0');
+    url.searchParams.append('includeStats', '0');
 
     const response = await fetch(url.toString(), {
       headers: { Accept: 'application/json' },
@@ -123,7 +125,6 @@ const fetchDashboardData = async (includePageviews = true, showLoading = true) =
         currentData.value = data.pageviews ?? null;
       }
 
-      statsData.value = data.stats ?? null;
       metricsData.value = data.metrics ?? {};
       dashboardFreshness.value = {
         _syncing: data._syncing ?? false,
@@ -140,7 +141,6 @@ const fetchDashboardData = async (includePageviews = true, showLoading = true) =
     console.error('Error fetching dashboard data', e);
   } finally {
     if (requestId === dashboardRequestId) {
-      statsLoading.value = false;
       metricsLoading.value = false;
 
       if (dashboardAbortController === abortController) {
@@ -150,8 +150,56 @@ const fetchDashboardData = async (includePageviews = true, showLoading = true) =
   }
 };
 
+const fetchStatsData = async (showLoading = true) => {
+  statsAbortController?.abort();
+
+  const requestId = ++statsRequestId;
+  const abortController = new AbortController();
+  statsAbortController = abortController;
+
+  if (showLoading) {
+    statsLoading.value = true;
+  }
+
+  try {
+    const url = new URL(
+      window.Craft.getActionUrl('observatory/dashboard/get-stats'),
+      window.location.origin,
+    );
+    url.searchParams.append('startAt', currentRange.value.startAt.toString());
+    url.searchParams.append('endAt', currentRange.value.endAt.toString());
+
+    const response = await fetch(url.toString(), {
+      headers: { Accept: 'application/json' },
+      signal: abortController.signal,
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as AnalyticsStats;
+      if (requestId === statsRequestId) {
+        statsData.value = data;
+      }
+    }
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return;
+    }
+
+    console.error('Error fetching dashboard stats', e);
+  } finally {
+    if (requestId === statsRequestId) {
+      statsLoading.value = false;
+
+      if (statsAbortController === abortController) {
+        statsAbortController = null;
+      }
+    }
+  }
+};
+
 onUnmounted(() => {
   dashboardAbortController?.abort();
+  statsAbortController?.abort();
   stopDashboardPolling();
 });
 
@@ -237,6 +285,7 @@ watch(
   () => [currentRange.value.startAt, currentRange.value.endAt, currentRange.value.unit] as const,
   (_newVal, oldVal) => {
     fetchDashboardData(oldVal !== undefined || !currentData.value);
+    fetchStatsData();
   },
   { immediate: true },
 );

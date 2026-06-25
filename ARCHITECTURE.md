@@ -17,8 +17,10 @@ The plugin renders analytics in two places, and they fetch differently:
   parallel (~6 concurrent connections), so several widgets load roughly in the
   time of the slowest one.
 - **The Observatory CP page** (`frontend/src/CpApp.vue`). One Vue app that issues
-  **one batched request** (`get-dashboard-data`) for the chart, KPI totals, and
-  all breakdown dimensions at once.
+  **one batched mirror-backed request** (`get-dashboard-data?includeStats=0`) for
+  the chart + breakdown dimensions, and a separate live `get-stats` request for
+  KPI totals. That keeps slow unique-visitor totals from blocking the mirror-backed
+  sections.
 
 Neither is "wrong" — batch when data is consumed together (the CP page), fan out
 when the pieces are independent (scattered widgets). The thing that was wrong was
@@ -30,7 +32,7 @@ All endpoints live in `src/controllers/DashboardController.php`.
 
 | Endpoint | Used by | Source |
 |---|---|---|
-| `get-dashboard-data` | CP page | **Mirror** breakdowns + **mirror** pageviews (day unit) + **live** totals |
+| `get-dashboard-data` | CP page | **Mirror** breakdowns + **mirror** pageviews (day unit); optional **live** totals |
 | `get-metrics` | Countries / Referrers / Devices / WorldMap | **Mirror** breakdown(s) + today live |
 | `get-pageviews` | (chart, currently via get-dashboard-data) | **Mirror** (day + month units) + today live; **live** for hour |
 | `get-heatmap-data` | Heatmap | **Mirror** (`HourlyStats`), 90 days |

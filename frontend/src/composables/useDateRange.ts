@@ -13,7 +13,7 @@ import {
 export type RangeValue = 
   | 'today' | '24h' | 'this_week' | '7d' 
   | 'this_month' | '30d' | '90d' 
-  | 'this_year' | '6m' | '12m' | 'all' | 'custom';
+  | 'this_year' | '6m' | '12m' | 'custom';
 
 export interface CustomDateRange {
   startDate: string;
@@ -101,12 +101,6 @@ export function useDateRange(initialRange: RangeValue = '24h') {
     '12m': {
       label: 'Last 12 months',
       startAt: startOfMonth(subMonths(new Date(), 11)).getTime(),
-      endAt: endOfDay(new Date()).getTime(),
-      unit: 'month'
-    },
-    'all': {
-      label: 'All time',
-      startAt: 0, 
       endAt: endOfDay(new Date()).getTime(),
       unit: 'month'
     },

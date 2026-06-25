@@ -106,6 +106,7 @@ class DashboardController extends Controller
         }
 
         $includePageviews = (string) $request->getParam('includePageviews', '1') !== '0';
+        $includeStats = (string) $request->getParam('includeStats', '1') !== '0';
 
         \Craft::$app->getSession()->close();
         $plugin = Observatory::getInstance();
@@ -119,7 +120,7 @@ class DashboardController extends Controller
 
         return $this->asJson([
             'pageviews' => $includePageviews ? $plugin->stats->getRangePageviews($startAt, $endAt, $unit) : null,
-            'stats' => $plugin->analytics->getTotals($startAt, $endAt),
+            'stats' => $includeStats ? $plugin->analytics->getTotals($startAt, $endAt) : null,
             'metrics' => $metrics,
             '_syncing' => $freshness['_syncing'],
             'lastSyncedAt' => $freshness['lastSyncedAt'],
@@ -331,9 +332,9 @@ class DashboardController extends Controller
     /**
      * Converts a timestamp range into closed-day offsets from today.
      *
-     * The CP's "all time" range starts at Unix epoch, which would enqueue decades of
-     * work on old sites. Cap freshness/sync coverage to a practical one-year window for
-     * that unbounded case; explicit finite ranges keep their actual span.
+     * Unbounded or malformed ranges could enqueue decades of work on old sites. Cap
+     * freshness/sync coverage to a practical one-year window for that case; explicit
+     * finite ranges keep their actual span.
      *
      * @return array{0:int,1:int}|null [nearest closed-day offset, furthest closed-day offset]
      */
