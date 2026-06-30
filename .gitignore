@@ -22,6 +22,11 @@ node_modules
 dist
 !src/assetbundles/**/dist/
 !src/assetbundles/**/dist/**
+# Built asset bundle files (generated)
+src/assetbundles/craftobservatorycp/dist/cp.js
+src/assetbundles/craftobservatorycp/dist/frontend.css
+src/assetbundles/craftobservatorywidget/dist/frontend.css
+src/assetbundles/craftobservatorywidget/dist/widget.js
 dist-ssr
 coverage
 *.local
