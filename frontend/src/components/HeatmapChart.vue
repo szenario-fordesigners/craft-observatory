@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import Tooltip from '@/shared/Tooltip.vue';
 
 interface HeatmapCell {
   weekday: number; // 0=Mon … 6=Sun
@@ -76,7 +77,7 @@ const peakRank = (weekday: number, hour: number): number =>
 </script>
 
 <template>
-  <div>
+  <div class="observatory-cp-heatmap">
     <!-- Skeleton while loading -->
     <div v-if="loading" class="h-40 animate-pulse rounded bg-gray-100" />
 
@@ -112,21 +113,20 @@ const peakRank = (weekday: number, hour: number): number =>
 
           <!-- 24 hour cells -->
           <div class="grid flex-1 gap-px" :style="{ gridTemplateColumns: `repeat(24, minmax(0, 1fr))` }">
-            <div
-              v-for="h in HOURS"
-              :key="h"
-              class="relative grid aspect-square cursor-default place-items-center rounded-sm transition-opacity hover:opacity-80"
-              :class="{ 'ring-1 ring-inset ring-gray-900/40': peakRank(di, h) }"
-              :style="{ backgroundColor: cellColor(visitors(di, h)) }"
-              :title="tooltip(di, h)"
-            >
-              <span
-                v-if="peakRank(di, h)"
-                class="flex h-3 w-3 items-center justify-center rounded-full bg-white/90 text-[8px] font-bold leading-none tabular-nums text-gray-900"
+            <Tooltip v-for="h in HOURS" :key="h" :text="tooltip(di, h)">
+              <div
+                class="relative grid aspect-square w-full cursor-default place-items-center rounded-sm transition-opacity hover:opacity-80"
+                :class="{ 'ring-1 ring-inset ring-gray-900/40': peakRank(di, h) }"
+                :style="{ backgroundColor: cellColor(visitors(di, h)) }"
               >
-                {{ peakRank(di, h) }}
-              </span>
-            </div>
+                <span
+                  v-if="peakRank(di, h)"
+                  class="flex h-3 w-3 items-center justify-center rounded-full bg-white/90 text-[8px] font-bold leading-none tabular-nums text-gray-900"
+                >
+                  {{ peakRank(di, h) }}
+                </span>
+              </div>
+            </Tooltip>
           </div>
         </div>
 
@@ -170,3 +170,14 @@ const peakRank = (weekday: number, hour: number): number =>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* The shared Tooltip paints its bubble with --observatory-fg (background) and
+   --observatory-bg (text). Those default to the widget's olive/cream theme, which
+   the CP doesn't load. Scope them here to a neutral dark-on-light tooltip that fits
+   the CP's Tailwind styling, without pulling in the widget's full theme. */
+.observatory-cp-heatmap {
+  --observatory-fg: #1f2937; /* gray-800 — bubble background */
+  --observatory-bg: #ffffff; /* bubble text */
+}
+</style>
