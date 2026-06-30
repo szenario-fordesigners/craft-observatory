@@ -1,3 +1,9 @@
 #observatory-wrapper {
-  // background: red;
+  // The shared observatory palette lives in shared/styles.css, which is only
+  // imported by the widget bundle (widget.ts). The CP bundle (cp.ts) doesn't
+  // load it, so components that reference these vars — e.g. CountryMap's
+  // color-mix() fills — would resolve to an invalid color and fall back to
+  // black. Define them here, tuned to the CP's gray/white theme.
+  --observatory-fg: #1f2937; // gray-800
+  --observatory-bg: #ffffff;
 }

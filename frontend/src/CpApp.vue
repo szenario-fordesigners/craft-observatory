@@ -4,6 +4,7 @@ import DateRangeSelector from '@/components/DateRangeSelector.vue';
 import HeatmapChart from '@/components/HeatmapChart.vue';
 import MetricList from '@/components/MetricList.vue';
 import StatsOverview from '@/components/StatsOverview.vue';
+import CountryMap from '@/shared/CountryMap.vue';
 import StatusNotice from '@/shared/StatusNotice.vue';
 import type { AnalyticsStatus } from '@/shared/analyticsTypes';
 import { useDateRange, type RangeValue } from '@/composables/useDateRange';
@@ -18,7 +19,7 @@ const props = defineProps<{
 }>();
 
 const { currentRangeValue, currentRange, customRange, setCustomRange } = useDateRange(
-  (props.defaultPeriod as RangeValue) || '24h',
+  (props.defaultPeriod as RangeValue) || '7d',
 );
 const currentData = ref<AnalyticsPageviews | null>(props.pageviews ?? null);
 
@@ -333,6 +334,12 @@ watch(
         :loading="heatmapLoading"
         :locale="locale"
       />
+    </div>
+
+    <!-- World map: visitors by country -->
+    <div class="mb-8 rounded border border-gray-100 bg-gray-50 p-4">
+      <h2 class="mb-3 text-sm font-semibold text-gray-700">Visitors by country</h2>
+      <CountryMap :countries="metricsLoading ? null : (metricsData.country ?? [])" :locale="locale" />
     </div>
 
     <!-- Grid Layout for Metrics -->

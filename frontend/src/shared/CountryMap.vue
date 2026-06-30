@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import CrossFade from '@/shared/CrossFade.vue';
 import { VisSingleContainer, VisTopoJSONMap, VisTooltip } from '@unovis/vue';
 import { WorldMapTopoJSON } from '@unovis/ts/maps';
@@ -50,7 +50,9 @@ const areaColor = (d: MapArea | undefined) => {
   if (!d || d.y === 0 || maxVisitors.value === 0) {
     return 'color-mix(in srgb, var(--observatory-fg) 10%, transparent)';
   }
-  const ratio = 0.3 + (d.y / maxVisitors.value) * 0.7;
+  // Square-root scale: visitor data is heavily right-skewed, so a linear ramp would
+  // leave the long tail of low-visitor countries nearly invisible.
+  const ratio = 0.15 + Math.sqrt(d.y / maxVisitors.value) * 0.85;
   return `color-mix(in srgb, var(--observatory-fg) ${Math.round(ratio * 100)}%, transparent)`;
 };
 
@@ -62,6 +64,20 @@ const tooltipTriggers = {
     return `${name}: ${visitors} visitors`;
   },
 };
+
+// The Unovis Vue SingleContainer wrapper calls `setData(data, preventRender=true)` on
+// data changes, so updated metrics are stored but the area fills are never repainted
+// (the tooltip still reads live props, which is why it stays correct). Force a re-render
+// of the map component whenever the data changes.
+const mapRef = ref<{ component?: { render: () => void } } | null>(null);
+
+watch(
+  () => props.countries,
+  async () => {
+    await nextTick();
+    mapRef.value?.component?.render();
+  },
+);
 
 // Ref is on the outer container (always rendered) so ResizeObserver fires immediately,
 // regardless of whether the skeleton or the real map is mounted inside.
@@ -89,6 +105,7 @@ onBeforeUnmount(() => {
       <div v-if="countries" key="real-map" class="observatory-country-map__inner">
         <VisSingleContainer :data="{ areas: mapData }" :width="containerWidth || undefined">
           <VisTopoJSONMap
+            ref="mapRef"
             :topojson="WorldMapTopoJSON"
             :areaId="areaId"
             :areaColor="areaColor"
