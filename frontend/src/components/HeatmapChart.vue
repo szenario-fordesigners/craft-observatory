@@ -63,6 +63,17 @@ const peakTimes = computed(() => {
 
 const peakLabel = (weekday: number, hour: number): string =>
   `${DAY_LABELS[weekday]} ${formatHour(hour)}`;
+
+const peakRankMap = computed(() => {
+  const map = new Map<string, number>();
+  peakTimes.value.forEach((peak, index) => {
+    map.set(`${peak.weekday}:${peak.hour}`, index + 1);
+  });
+  return map;
+});
+
+const peakRank = (weekday: number, hour: number): number =>
+  peakRankMap.value.get(`${weekday}:${hour}`) ?? 0;
 </script>
 
 <template>
@@ -105,10 +116,18 @@ const peakLabel = (weekday: number, hour: number): string =>
             <div
               v-for="h in HOURS"
               :key="h"
-              class="aspect-square rounded-sm cursor-default transition-opacity hover:opacity-80"
+              class="relative grid aspect-square cursor-default place-items-center rounded-sm transition-opacity hover:opacity-80"
+              :class="{ 'ring-1 ring-inset ring-gray-900/40': peakRank(di, h) }"
               :style="{ backgroundColor: cellColor(visitors(di, h)) }"
               :title="tooltip(di, h)"
-            />
+            >
+              <span
+                v-if="peakRank(di, h)"
+                class="flex h-3 w-3 items-center justify-center rounded-full bg-white/90 text-[8px] font-bold leading-none tabular-nums text-gray-900"
+              >
+                {{ peakRank(di, h) }}
+              </span>
+            </div>
           </div>
         </div>
 
