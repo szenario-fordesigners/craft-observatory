@@ -14,6 +14,7 @@ const props = defineProps<{
   title?: string;
   pageviews?: AnalyticsPageviews | null;
   defaultPeriod?: string;
+  locale?: string;
 }>();
 
 const { currentRangeValue, currentRange, customRange, setCustomRange } = useDateRange(
@@ -330,6 +331,7 @@ watch(
         :max-visitors="heatmapData?.maxVisitors ?? 0"
         :days-with-data="heatmapData?.daysWithData ?? 0"
         :loading="heatmapLoading"
+        :locale="locale"
       />
     </div>
 

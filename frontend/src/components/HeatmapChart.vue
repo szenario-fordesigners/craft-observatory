@@ -12,6 +12,7 @@ const props = defineProps<{
   maxVisitors: number;
   daysWithData: number;
   loading?: boolean;
+  locale?: string;
 }>();
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -38,11 +39,9 @@ const cellColor = (v: number): string => {
   return `rgb(${r} ${g} ${b})`;
 };
 
-const formatHour = (h: number): string => {
-  if (h === 0) return '12am';
-  if (h === 12) return '12pm';
-  return h < 12 ? `${h}am` : `${h - 12}pm`;
-};
+const hourFmt = computed(() => new Intl.DateTimeFormat(props.locale ?? 'en', { hour: 'numeric' }));
+
+const formatHour = (h: number): string => hourFmt.value.format(new Date(2000, 0, 1, h));
 
 const tooltip = (weekday: number, hour: number): string => {
   const v = visitors(weekday, hour);
