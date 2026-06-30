@@ -49,6 +49,20 @@ const tooltip = (weekday: number, hour: number): string => {
   const label = `${DAY_LABELS[weekday]} ${formatHour(hour)}`;
   return v > 0 ? `${label}: avg ${v} visitor${v !== 1 ? 's' : ''}` : `${label}: no data`;
 };
+
+// Top 3 (weekday, hour) cells ranked by average visitors.
+const peakTimes = computed(() => {
+  const entries: { weekday: number; hour: number; value: number }[] = [];
+  for (const cell of props.cells) {
+    if (cell.visitors > 0) {
+      entries.push({ weekday: cell.weekday, hour: cell.hour, value: cell.visitors });
+    }
+  }
+  return entries.sort((a, b) => b.value - a.value).slice(0, 3);
+});
+
+const peakLabel = (weekday: number, hour: number): string =>
+  `${DAY_LABELS[weekday]} ${formatHour(hour)}`;
 </script>
 
 <template>
@@ -111,6 +125,28 @@ const tooltip = (weekday: number, hour: number): string => {
             />
             <span>More</span>
           </div>
+        </div>
+
+        <!-- Peak times -->
+        <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+          <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+            Peak times
+          </span>
+          <template v-if="peakTimes.length">
+            <span
+              v-for="(peak, i) in peakTimes"
+              :key="i"
+              class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-1 pr-2.5 text-xs text-gray-700"
+            >
+              <span
+                class="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold tabular-nums text-white"
+              >
+                {{ i + 1 }}
+              </span>
+              {{ peakLabel(peak.weekday, peak.hour) }}
+            </span>
+          </template>
+          <span v-else class="text-xs text-gray-400">no data yet</span>
         </div>
       </template>
     </div>
