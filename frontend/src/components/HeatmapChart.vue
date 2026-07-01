@@ -30,14 +30,15 @@ const cellMap = computed(() => {
 const visitors = (weekday: number, hour: number) =>
   cellMap.value.get(`${weekday}:${hour}`) ?? 0;
 
-// Interpolate from indigo-100 (#e0e7ff) at 0 to indigo-600 (#4f46e5) at max.
+// Ramp the cell fill from a faint observatory-fg tint (no data) to a strong one (peak),
+// mirroring the widget heatmap's opacity ramp (0.08 empty → ~0.85 peak).
 const cellColor = (v: number): string => {
-  if (props.maxVisitors === 0 || v === 0) return 'rgb(243 244 246)'; // gray-100 for empty
+  if (props.maxVisitors === 0 || v === 0) {
+    return 'color-mix(in srgb, var(--observatory-fg) 8%, transparent)';
+  }
   const t = Math.min(v / props.maxVisitors, 1);
-  const r = Math.round(224 + (79 - 224) * t);
-  const g = Math.round(231 + (70 - 231) * t);
-  const b = Math.round(255 + (229 - 255) * t);
-  return `rgb(${r} ${g} ${b})`;
+  const pct = Math.round((0.15 + t * 0.7) * 100);
+  return `color-mix(in srgb, var(--observatory-fg) ${pct}%, transparent)`;
 };
 
 const hourFmt = computed(() => new Intl.DateTimeFormat(props.locale ?? 'en', { hour: 'numeric' }));
@@ -79,13 +80,13 @@ const peakRank = (weekday: number, hour: number): number =>
 <template>
   <div class="observatory-cp-heatmap">
     <!-- Skeleton while loading -->
-    <div v-if="loading" class="h-40 animate-pulse rounded bg-gray-100" />
+    <div v-if="loading" class="h-40 animate-pulse rounded bg-observatory-fg/10" />
 
     <div v-else>
       <!-- No data state -->
       <div
         v-if="cells.length === 0"
-        class="flex h-32 items-center justify-center rounded border border-dashed border-gray-200 text-sm text-gray-400"
+        class="flex h-32 items-center justify-center rounded border border-dashed border-observatory-fg/20 text-sm text-observatory-fg/50"
       >
         No hourly data yet — syncing in the background.
       </div>
@@ -99,7 +100,7 @@ const peakRank = (weekday: number, hour: number): number =>
             <div
               v-for="h in HOURS"
               :key="h"
-              class="text-center text-[9px] leading-none text-gray-400"
+              class="text-center text-[9px] leading-none text-observatory-fg/55"
             >
               {{ h % 3 === 0 ? formatHour(h) : '' }}
             </div>
@@ -109,19 +110,19 @@ const peakRank = (weekday: number, hour: number): number =>
         <!-- Rows: one per weekday -->
         <div v-for="(day, di) in DAY_LABELS" :key="day" class="mb-0.5 flex items-center gap-1">
           <!-- Day label -->
-          <div class="w-8 shrink-0 text-right text-[10px] leading-none text-gray-500">{{ day }}</div>
+          <div class="w-8 shrink-0 text-right text-[10px] leading-none text-observatory-fg/65">{{ day }}</div>
 
           <!-- 24 hour cells -->
           <div class="grid flex-1 gap-px" :style="{ gridTemplateColumns: `repeat(24, minmax(0, 1fr))` }">
             <Tooltip v-for="h in HOURS" :key="h" :text="tooltip(di, h)">
               <div
                 class="relative grid aspect-square w-full cursor-default place-items-center rounded-sm transition-opacity hover:opacity-80"
-                :class="{ 'ring-1 ring-inset ring-gray-900/40': peakRank(di, h) }"
+                :class="{ 'ring-1 ring-inset ring-observatory-bg/70': peakRank(di, h) }"
                 :style="{ backgroundColor: cellColor(visitors(di, h)) }"
               >
                 <span
                   v-if="peakRank(di, h)"
-                  class="flex h-3 w-3 items-center justify-center rounded-full bg-white/90 text-[8px] font-bold leading-none tabular-nums text-gray-900"
+                  class="flex h-3 w-3 items-center justify-center rounded-full bg-observatory-bg/90 text-[8px] font-bold leading-none tabular-nums text-observatory-fg"
                 >
                   {{ peakRank(di, h) }}
                 </span>
@@ -131,7 +132,7 @@ const peakRank = (weekday: number, hour: number): number =>
         </div>
 
         <!-- Legend + metadata -->
-        <div class="mt-3 flex items-center justify-between text-[10px] text-gray-400">
+        <div class="mt-3 flex items-center justify-between text-[10px] text-observatory-fg/55">
           <span>Based on {{ daysWithData }} day{{ daysWithData !== 1 ? 's' : '' }} of data</span>
           <div class="flex items-center gap-1">
             <span>Less</span>
@@ -146,38 +147,28 @@ const peakRank = (weekday: number, hour: number): number =>
         </div>
 
         <!-- Peak times -->
-        <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
-          <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+        <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-observatory-fg/15 pt-3">
+          <span class="text-[10px] font-semibold uppercase tracking-wide text-observatory-fg/60">
             Peak times
           </span>
           <template v-if="peakTimes.length">
             <span
               v-for="(peak, i) in peakTimes"
               :key="i"
-              class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-1 pr-2.5 text-xs text-gray-700"
+              class="inline-flex items-center gap-1.5 rounded-full bg-observatory-fg/10 py-1 pl-1 pr-2.5 text-xs text-observatory-fg"
             >
               <span
-                class="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold tabular-nums text-white"
+                class="flex h-4 w-4 items-center justify-center rounded-full bg-observatory-fg text-[10px] font-bold tabular-nums text-observatory-bg"
               >
                 {{ i + 1 }}
               </span>
               {{ peakLabel(peak.weekday, peak.hour) }}
             </span>
           </template>
-          <span v-else class="text-xs text-gray-400">no data yet</span>
+          <span v-else class="text-xs text-observatory-fg/55">no data yet</span>
         </div>
       </template>
     </div>
   </div>
 </template>
 
-<style scoped>
-/* The shared Tooltip paints its bubble with --observatory-fg (background) and
-   --observatory-bg (text). Those default to the widget's olive/cream theme, which
-   the CP doesn't load. Scope them here to a neutral dark-on-light tooltip that fits
-   the CP's Tailwind styling, without pulling in the widget's full theme. */
-.observatory-cp-heatmap {
-  --observatory-fg: #1f2937; /* gray-800 — bubble background */
-  --observatory-bg: #ffffff; /* bubble text */
-}
-</style>

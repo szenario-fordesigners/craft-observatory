@@ -1,9 +1,31 @@
+// Craft's CP layout renders its own page heading (#page-title) in the header.
+// The observatory app renders its own title inside the card, so hide Craft's to
+// avoid the duplicate. This stylesheet only loads on the Observatory page (via the
+// CP asset bundle), so the rule is naturally scoped to it.
+#page-title {
+  display: none;
+}
+
+// The CP content pane (rendered by Craft's layout, one layer above the Vue mount
+// point) keeps its own padding and border radius. Strip the padding and match the
+// wrapper's radius so the observatory card fills the pane edge to edge.
+.content-pane:has(#observatory-cp-app) {
+  padding: 0;
+  border-radius: 1.25rem;
+}
+
 #observatory-wrapper {
   // The shared observatory palette lives in shared/styles.css, which is only
   // imported by the widget bundle (widget.ts). The CP bundle (cp.ts) doesn't
   // load it, so components that reference these vars — e.g. CountryMap's
   // color-mix() fills — would resolve to an invalid color and fall back to
-  // black. Define them here, tuned to the CP's gray/white theme.
-  --observatory-fg: #1f2937; // gray-800
-  --observatory-bg: #ffffff;
+  // black. Define them here so the CP matches the widget theme. These mirror
+  // the values in shared/styles.css and the Tailwind @theme tokens in
+  // tailwind.css (--color-observatory-*).
+  --observatory-bg: #eeebb0;
+  --observatory-fg: #72715a;
+  --observatory-bar-bottom: #d8d6ab;
+
+  font-family: 'Arial', sans-serif;
+  color: var(--observatory-fg);
 }

@@ -8,7 +8,12 @@ import CountryMap from '@/shared/CountryMap.vue';
 import StatusNotice from '@/shared/StatusNotice.vue';
 import type { AnalyticsStatus } from '@/shared/analyticsTypes';
 import { useDateRange, type RangeValue } from '@/composables/useDateRange';
-import type { AnalyticsMetric, AnalyticsPageviews, AnalyticsStats, SyncFreshness } from '@/shared/analyticsTypes';
+import type {
+  AnalyticsMetric,
+  AnalyticsPageviews,
+  AnalyticsStats,
+  SyncFreshness,
+} from '@/shared/analyticsTypes';
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 
 const props = defineProps<{
@@ -294,18 +299,21 @@ watch(
 </script>
 
 <template>
-  <div id="observatory-wrapper" class="rounded-lg border border-gray-200 bg-white p-6">
+  <div
+    id="observatory-wrapper"
+    class="rounded-[1.25rem] bg-observatory-bg p-6 font-observatory text-observatory-fg"
+  >
     <StatusNotice :status="status" variant="cp" />
 
     <div
       v-if="cpFreshnessMessage"
-      class="mb-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+      class="mb-4 rounded-[0.7rem] bg-observatory-fg/[0.08] px-4 py-3 text-sm text-observatory-fg/80"
     >
       {{ cpFreshnessMessage }}
     </div>
 
     <div class="mb-6 flex items-center justify-between">
-      <h1 class="m-0 text-xl font-bold text-gray-800">{{ title }}</h1>
+      <h1 class="m-0 text-xl font-medium text-observatory-fg">{{ title }}</h1>
       <DateRangeSelector
         v-model="currentRangeValue"
         :custom-range="customRange"
@@ -317,16 +325,18 @@ watch(
     <StatsOverview :stats="statsData" :loading="statsLoading" />
 
     <!-- Main Chart -->
-    <div class="mb-8 rounded border border-gray-100 bg-gray-50 px-2 pt-4 pb-0">
+    <div class="mb-8 rounded-[0.7rem] bg-observatory-fg/[0.06] px-2 pt-4 pb-0">
       <div v-if="currentData">
         <LineChart :pageviews="currentData" />
       </div>
-      <div v-else class="flex h-48 items-center justify-center text-gray-400">Loading data...</div>
+      <div v-else class="flex h-48 items-center justify-center text-observatory-fg/50">
+        Loading data...
+      </div>
     </div>
 
     <!-- Heatmap: traffic by hour of day -->
-    <div class="mb-8 rounded border border-gray-100 bg-gray-50 p-4">
-      <h2 class="mb-3 text-sm font-semibold text-gray-700">Traffic by hour of day</h2>
+    <div class="mb-8 rounded-[0.7rem] bg-observatory-fg/[0.06] p-4">
+      <h2 class="mb-3 text-sm font-medium text-observatory-fg">Traffic by hour of day</h2>
       <HeatmapChart
         :cells="heatmapData?.cells ?? []"
         :max-visitors="heatmapData?.maxVisitors ?? 0"
@@ -336,26 +346,20 @@ watch(
       />
     </div>
 
-    <!-- World map: visitors by country -->
-    <div class="mb-8 rounded border border-gray-100 bg-gray-50 p-4">
-      <h2 class="mb-3 text-sm font-semibold text-gray-700">Visitors by country</h2>
-      <CountryMap :countries="metricsLoading ? null : (metricsData.country ?? [])" :locale="locale" />
-    </div>
-
     <!-- Grid Layout for Metrics -->
     <div class="grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
       <!-- Left Column: Pages & Sources -->
       <div class="space-y-8">
         <!-- Pages Group -->
         <div>
-          <div class="mb-2 flex space-x-6 border-b border-gray-200 pb-2">
+          <div class="mb-2 flex space-x-6 border-b border-observatory-fg/45 pb-2">
             <button
               @click="pageTab = 'url'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 pageTab === 'url'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               Path
@@ -363,10 +367,10 @@ watch(
             <button
               @click="pageTab = 'entry'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 pageTab === 'entry'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               Entry page
@@ -374,10 +378,10 @@ watch(
             <button
               @click="pageTab = 'exit'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 pageTab === 'exit'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               Exit page
@@ -388,14 +392,14 @@ watch(
 
         <!-- Sources Group -->
         <div>
-          <div class="mb-2 flex space-x-6 border-b border-gray-200 pb-2">
+          <div class="mb-2 flex space-x-6 border-b border-observatory-fg/45 pb-2">
             <button
               @click="sourceTab = 'referrer'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 sourceTab === 'referrer'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               Referrers
@@ -403,10 +407,10 @@ watch(
             <button
               @click="sourceTab = 'channel'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 sourceTab === 'channel'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               Channels
@@ -420,14 +424,14 @@ watch(
       <div class="space-y-8">
         <!-- Environment Group -->
         <div>
-          <div class="mb-2 flex space-x-6 border-b border-gray-200 pb-2">
+          <div class="mb-2 flex space-x-6 border-b border-observatory-fg/45 pb-2">
             <button
               @click="envTab = 'browser'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 envTab === 'browser'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               Browser
@@ -435,10 +439,10 @@ watch(
             <button
               @click="envTab = 'os'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 envTab === 'os'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               OS
@@ -446,10 +450,10 @@ watch(
             <button
               @click="envTab = 'device'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 envTab === 'device'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               Device
@@ -460,14 +464,14 @@ watch(
 
         <!-- Location Group -->
         <div>
-          <div class="mb-2 flex space-x-6 border-b border-gray-200 pb-2">
+          <div class="mb-2 flex space-x-6 border-b border-observatory-fg/45 pb-2">
             <button
               @click="locTab = 'country'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 locTab === 'country'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               Country
@@ -475,10 +479,10 @@ watch(
             <button
               @click="locTab = 'region'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 locTab === 'region'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               Region
@@ -486,10 +490,10 @@ watch(
             <button
               @click="locTab = 'city'"
               :class="[
-                'flex-1 text-center text-sm font-semibold',
+                'flex-1 text-center text-sm font-medium',
                 locTab === 'city'
-                  ? '-mb-2.5 border-b-2 border-gray-900 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700',
+                  ? '-mb-2.5 border-b-2 border-observatory-fg text-observatory-fg'
+                  : 'text-observatory-fg/60 hover:text-observatory-fg',
               ]"
             >
               City
@@ -498,6 +502,15 @@ watch(
           <MetricList :data="metricsData[locTab] ?? []" :loading="metricsLoading" />
         </div>
       </div>
+    </div>
+
+    <!-- World map: visitors by country -->
+    <div class="mt-8 rounded-[0.7rem] bg-observatory-fg/[0.06] p-4">
+      <h2 class="mb-3 text-sm font-medium text-observatory-fg">Visitors by country</h2>
+      <CountryMap
+        :countries="metricsLoading ? null : (metricsData.country ?? [])"
+        :locale="locale"
+      />
     </div>
   </div>
 </template>

@@ -109,24 +109,20 @@ const formatedStats = computed(() => {
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
     
     <template v-if="loading">
-        <div v-for="i in 4" :key="i" class="bg-white rounded-lg p-6 border border-gray-100 shadow-sm animate-pulse">
-            <div class="h-4 bg-gray-200 rounded w-1/2 mb-4 mx-auto"></div>
-            <div class="h-8 bg-gray-200 rounded w-3/4 mb-4 mx-auto"></div>
-            <div class="h-4 bg-gray-200 rounded w-1/4 mx-auto"></div>
+        <div v-for="i in 4" :key="i" class="bg-observatory-fg/[0.06] rounded-[0.7rem] p-6 animate-pulse">
+            <div class="h-4 bg-observatory-fg/20 rounded w-1/2 mb-4 mx-auto"></div>
+            <div class="h-8 bg-observatory-fg/20 rounded w-3/4 mb-4 mx-auto"></div>
+            <div class="h-4 bg-observatory-fg/20 rounded w-1/4 mx-auto"></div>
         </div>
     </template>
-    
+
     <template v-else-if="formatedStats">
-        <div v-for="(stat, key) in formatedStats" :key="key" class="bg-white rounded-lg p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
-            
-            <div class="text-sm text-gray-500 font-medium mb-2 capitalize">{{ String(key).replace(/([A-Z])/g, ' $1').trim() }}</div>
-            <div class="text-3xl font-bold text-gray-800 mb-2">{{ stat.value }}</div>
-            
-            <div class="text-sm font-semibold flex items-center justify-center gap-1" :class="[
-                stat.trend > 0 ? (stat.reverseColor ? 'text-red-500' : 'text-green-500') : '',
-                stat.trend < 0 ? (stat.reverseColor ? 'text-green-500' : 'text-red-500') : '',
-                stat.trend === 0 ? 'text-gray-400' : ''
-            ]">
+        <div v-for="(stat, key) in formatedStats" :key="key" class="bg-observatory-fg/[0.06] rounded-[0.7rem] p-6 flex flex-col items-center justify-center text-center">
+
+            <div class="text-sm text-observatory-fg/70 font-medium mb-2 capitalize">{{ String(key).replace(/([A-Z])/g, ' $1').trim() }}</div>
+            <div class="text-[3rem] leading-none text-observatory-fg mb-2">{{ stat.value }}</div>
+
+            <div class="text-sm font-medium flex items-center justify-center gap-1 text-observatory-fg/70">
                 <svg v-if="stat.trend > 0" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
                 <svg v-else-if="stat.trend < 0" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
                 <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14"></path></svg>
