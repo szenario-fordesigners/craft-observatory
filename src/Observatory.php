@@ -14,7 +14,6 @@ use szenario\craftobservatory\models\Settings;
 use szenario\craftobservatory\services\Analytics;
 use szenario\craftobservatory\services\StatsReport;
 use szenario\craftobservatory\services\SyncCoordinator;
-use szenario\craftobservatory\services\UmamiClient;
 use szenario\craftobservatory\widgets\ObservatoryHeatmapWidget;
 use szenario\craftobservatory\widgets\ObservatoryVisitorsWidget;
 use yii\base\Event;
@@ -23,7 +22,6 @@ use yii\base\Event;
  * Observatory plugin
  *
  * @property-read Analytics $analytics
- * @property-read UmamiClient $client
  * @property-read StatsReport $stats
  * @property-read SyncCoordinator $sync
  * @method static Observatory getInstance()
@@ -66,7 +64,6 @@ class Observatory extends Plugin
         return [
             'components' => [
                 'analytics' => Analytics::class,
-                'client' => UmamiClient::class,
                 'stats' => StatsReport::class,
                 'sync' => SyncCoordinator::class,
             ],

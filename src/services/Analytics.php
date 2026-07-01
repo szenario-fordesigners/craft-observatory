@@ -8,7 +8,6 @@ use craft\helpers\App;
 use szenario\craftobservatory\models\Settings;
 use szenario\craftobservatory\sources\AnalyticsSourceInterface;
 use szenario\craftobservatory\sources\PostHogAnalyticsSource;
-use szenario\craftobservatory\sources\UmamiAnalyticsSource;
 use szenario\craftobservatory\Observatory;
 
 /**
@@ -45,8 +44,8 @@ class Analytics extends Component implements AnalyticsSourceInterface
         $settings = Observatory::getInstance()->getSettings();
         $source = App::parseEnv($settings->analyticsSource) ?: Settings::SOURCE_POSTHOG;
 
+        // Add future providers as new match arms.
         $class = match ($source) {
-            Settings::SOURCE_UMAMI => UmamiAnalyticsSource::class,
             default => PostHogAnalyticsSource::class,
         };
 
