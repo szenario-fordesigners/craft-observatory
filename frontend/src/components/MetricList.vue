@@ -30,7 +30,7 @@ const getPercentage = (val: number) => {
 </script>
 
 <template>
-  <div class="mt-4">
+  <div class="mt-4 min-h-64">
     <h3 v-if="label" class="text-sm font-medium text-observatory-fg/70 mb-2 uppercase">{{ label }}</h3>
 
     <div v-if="loading" class="animate-pulse space-y-2">
