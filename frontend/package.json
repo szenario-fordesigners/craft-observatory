@@ -32,14 +32,14 @@
     "vue": "3.5.39"
   },
   "devDependencies": {
-    "@prettier/plugin-oxc": "0.2.0",
+    "@prettier/plugin-oxc": "0.2.1",
     "@tsconfig/node24": "24.0.4",
     "@types/node": "24.13.3",
     "@vitejs/plugin-vue": "6.0.7",
     "@vue/eslint-config-prettier": "10.2.0",
     "@vue/eslint-config-typescript": "14.9.0",
     "@vue/tsconfig": "0.9.1",
-    "eslint": "10.6.0",
+    "eslint": "10.7.0",
     "eslint-plugin-oxlint": "1.73.0",
     "eslint-plugin-vue": "10.9.2",
     "husky": "9.1.7",
@@ -55,7 +55,7 @@
     "vite-plugin-vue-devtools": "8.1.5",
     "vue-tsc": "3.3.7"
   },
-  "packageManager": "pnpm@11.10.0",
+  "packageManager": "pnpm@11.11.0",
   "lint-staged": {
     "*.{ts,vue,js}": [
       "oxlint --fix -D correctness",
