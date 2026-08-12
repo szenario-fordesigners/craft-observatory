@@ -50,12 +50,12 @@
     "prettier": "3.9.6",
     "prettier-plugin-tailwindcss": "0.8.1",
     "sass-embedded": "1.100.0",
-    "typescript": "7.0.2",
+    "typescript": "6.0.3",
     "vite": "8.2.0",
     "vite-plugin-vue-devtools": "8.2.1",
     "vue-tsc": "3.3.9"
   },
-  "packageManager": "pnpm@11.20.0",
+  "packageManager": "pnpm@11.21.0",
   "lint-staged": {
     "*.{ts,vue,js}": [
       "oxlint --fix -D correctness",
