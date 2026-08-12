@@ -9,6 +9,7 @@ use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Pool;
 use GuzzleHttp\Psr7\Request;
+use szenario\craftobservatory\exceptions\AnalyticsRateLimitedException;
 use szenario\craftobservatory\Observatory;
 
 /**
@@ -223,13 +224,13 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             $eventDay,
             $this->_toDateTime($startAt),
             $this->_toDateTime($endAt),
-        ), 'craft analytics daily totals range', 86400);
+        ), 'craft analytics daily totals range', 86400, true);
         $sessionRows = $this->_cachedQuery(sprintf(
             "SELECT %s AS day, count() AS visits, sum(\$session_duration) AS sessionDurationSeconds FROM sessions WHERE \$start_timestamp >= %s AND \$start_timestamp <= %s GROUP BY day ORDER BY day ASC",
             $sessionDay,
             $this->_toDateTime($startAt),
             $this->_toDateTime($endAt),
-        ), 'craft analytics daily session totals range', 86400);
+        ), 'craft analytics daily session totals range', 86400, true);
 
         $statsByDate = $eventRows === null ? null : array_fill_keys($dates, [
             'pageviews' => 0,
@@ -266,7 +267,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
                 $knownTypes[] = $type;
             }
         }
-        $breakdownRows = $this->_cachedQueries($queries, 'daily breakdown range', 86400, $concurrency);
+        $breakdownRows = $this->_cachedQueries($queries, 'daily breakdown range', 86400, $concurrency, true);
         $successfulTypes = array_keys($breakdownRows);
         $metricsByDate = array_fill_keys($dates, []);
         foreach ($successfulTypes as $type) {
@@ -323,7 +324,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             $hour,
             $this->_toDateTime($startAt),
             $this->_toDateTime($endAt),
-        ), 'craft analytics hourly pageviews range', 86400);
+        ), 'craft analytics hourly pageviews range', 86400, true);
         if ($rows === null) {
             return [];
         }
@@ -356,7 +357,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
 
         [$startAt, $endAt, $dates] = $range;
         $sql = $this->_dailyBreakdownSql('event', $startAt, $endAt);
-        $rows = $sql === null ? null : $this->_cachedQuery($sql, 'craft analytics daily events range', 86400);
+        $rows = $sql === null ? null : $this->_cachedQuery($sql, 'craft analytics daily events range', 86400, true);
         if ($rows === null) {
             return [];
         }
@@ -400,7 +401,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      * @author szenario
      * @since 1.0.0
      */
-    private function _cachedQuery(string $sql, string $name, int $cacheDuration): ?array
+    private function _cachedQuery(string $sql, string $name, int $cacheDuration, bool $throwOnRateLimit = false): ?array
     {
         $cacheKey = $this->_queryCacheKey($sql);
         $cache = Craft::$app->getCache();
@@ -410,7 +411,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             return $cached;
         }
 
-        $rows = $this->_query($sql, $name);
+        $rows = $this->_query($sql, $name, $throwOnRateLimit);
 
         if ($rows !== null && $cacheDuration > 0) {
             $cache->set($cacheKey, $rows, $cacheDuration);
@@ -428,7 +429,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      * @param array<string,string> $queries
      * @return array<string,array<int,array<mixed>>>
      */
-    private function _cachedQueries(array $queries, string $name, int $cacheDuration, int $concurrency): array
+    private function _cachedQueries(array $queries, string $name, int $cacheDuration, int $concurrency, bool $throwOnRateLimit = false): array
     {
         $cache = Craft::$app->getCache();
         $results = [];
@@ -453,6 +454,14 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
         }
 
         [$host, $projectId, $apiKey] = $context;
+        try {
+            $this->_assertNotRateLimited($projectId);
+        } catch (AnalyticsRateLimitedException $e) {
+            if ($throwOnRateLimit) {
+                throw $e;
+            }
+            return $results;
+        }
         $url = "{$host}/api/projects/{$projectId}/query/";
         $headers = [
             'Accept' => 'application/json',
@@ -472,6 +481,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             }
         };
 
+        $rateLimitException = null;
         $pool = new Pool($client, $requests(), [
             'concurrency' => min(2, max(1, $concurrency)),
             'fulfilled' => function($response, $index) use (&$results, $pending, $cache, $cacheDuration, $projectId, $name) {
@@ -488,7 +498,10 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
                 }
                 $results[$key] = $rows;
             },
-            'rejected' => function($reason, $index) use ($projectId, $name) {
+            'rejected' => function($reason, $index) use (&$rateLimitException, $projectId, $name) {
+                if ($reason instanceof \Throwable) {
+                    $rateLimitException = $this->_rateLimitException($reason, $projectId) ?? $rateLimitException;
+                }
                 if ($reason instanceof \Throwable && $this->_isAuthError($reason)) {
                     $this->_markAuthError($projectId);
                 }
@@ -502,6 +515,10 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             Craft::error("PostHog {$name} batch request failed: {$e->getMessage()}", __METHOD__);
         }
 
+        if ($throwOnRateLimit && $rateLimitException !== null) {
+            throw $rateLimitException;
+        }
+
         return $results;
     }
 
@@ -513,7 +530,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      * @author szenario
      * @since 1.0.0
      */
-    private function _query(string $sql, string $name): ?array
+    private function _query(string $sql, string $name, bool $throwOnRateLimit = false): ?array
     {
         $context = $this->_httpContext();
         if ($context === null) {
@@ -521,6 +538,14 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
         }
 
         [$host, $projectId, $apiKey] = $context;
+        try {
+            $this->_assertNotRateLimited($projectId);
+        } catch (AnalyticsRateLimitedException $e) {
+            if ($throwOnRateLimit) {
+                throw $e;
+            }
+            return null;
+        }
         $url = "{$host}/api/projects/{$projectId}/query/";
 
         try {
@@ -560,6 +585,10 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
 
             return $rows;
         } catch (GuzzleException $e) {
+            $rateLimitException = $this->_rateLimitException($e, $projectId);
+            if ($throwOnRateLimit && $rateLimitException !== null) {
+                throw $rateLimitException;
+            }
             if ($this->_isAuthError($e)) {
                 $this->_markAuthError($projectId);
             }
@@ -668,6 +697,48 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
     private function _clearAuthError(string $projectId): void
     {
         Craft::$app->getCache()->delete($this->_authErrorCacheKey($projectId));
+    }
+
+    /**
+     * Stops requests while a project-level PostHog cooldown is active.
+     */
+    private function _assertNotRateLimited(string $projectId): void
+    {
+        $retryAt = Craft::$app->getCache()->get($this->_rateLimitCacheKey($projectId));
+        if ($retryAt !== false && (int) $retryAt > time()) {
+            throw new AnalyticsRateLimitedException((int) $retryAt - time());
+        }
+    }
+
+    /**
+     * Converts a PostHog 429 into a shared project cooldown.
+     */
+    private function _rateLimitException(\Throwable $e, string $projectId): ?AnalyticsRateLimitedException
+    {
+        if (!$e instanceof RequestException || !$e->hasResponse() || $e->getResponse()->getStatusCode() !== 429) {
+            return null;
+        }
+
+        $response = $e->getResponse();
+        $retryAfter = trim($response->getHeaderLine('Retry-After'));
+        $delay = ctype_digit($retryAfter) ? (int) $retryAfter : 0;
+
+        if ($delay < 1 && preg_match('/Expected available in (\d+) seconds/i', (string) $response->getBody(), $matches)) {
+            $delay = (int) $matches[1];
+        }
+        $delay = max(1, $delay ?: 60);
+
+        Craft::$app->getCache()->set($this->_rateLimitCacheKey($projectId), time() + $delay, $delay);
+
+        return new AnalyticsRateLimitedException($delay);
+    }
+
+    /**
+     * Returns the shared project cooldown cache key.
+     */
+    private function _rateLimitCacheKey(string $projectId): string
+    {
+        return "posthog_rate_limit_{$projectId}";
     }
 
     /**

@@ -4,6 +4,7 @@ namespace szenario\craftobservatory\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
+use szenario\craftobservatory\exceptions\AnalyticsRateLimitedException;
 use szenario\craftobservatory\Observatory;
 use szenario\craftobservatory\services\SyncCoordinator;
 
@@ -42,6 +43,7 @@ class SyncDailyStatsJob extends BaseJob
         );
 
         $plugin = Observatory::getInstance();
+        $rateLimited = false;
 
         try {
             // Backfill covers daily + breakdowns + hourly, but never events (the events
@@ -76,8 +78,14 @@ class SyncDailyStatsJob extends BaseJob
                 "hourly(synced={$hourly['synced']}, failed={$hourly['failed']}), elapsed={$elapsed}s.",
                 'observatory'
             );
+        } catch (AnalyticsRateLimitedException $e) {
+            $rateLimited = true;
+            $plugin->sync->deferAutoSync($this->websiteId, $e->retryAfterSeconds);
+            Craft::warning("SyncDailyStatsJob deferred for {$e->retryAfterSeconds}s by PostHog rate limit.", 'observatory');
         } finally {
-            $plugin->sync->resetAutoSyncTimeGuard($this->websiteId);
+            if (!$rateLimited) {
+                $plugin->sync->resetAutoSyncTimeGuard($this->websiteId);
+            }
         }
     }
 

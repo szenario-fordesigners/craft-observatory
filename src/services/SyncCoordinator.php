@@ -67,6 +67,10 @@ class SyncCoordinator extends Component
         }
 
         $cache = Craft::$app->getCache();
+        if ($cache->get($this->_autoSyncDeferredCacheKey($websiteId)) !== false) {
+            Craft::debug('autoSyncMissingDays skipped: analytics provider cooldown is active.', 'observatory');
+            return false;
+        }
         $timeGuardWasReset = $cache->get($this->_autoSyncTimeGuardResetCacheKey($websiteId)) === true;
 
         $lastUpdatedStr = DailyStats::find()
@@ -158,6 +162,21 @@ class SyncCoordinator extends Component
         $cache = Craft::$app->getCache();
         $cache->delete($this->_autoSyncLastAttemptCacheKey($websiteId));
         $cache->set($this->_autoSyncTimeGuardResetCacheKey($websiteId), true, 600);
+    }
+
+    /**
+     * Defers new auto-sync jobs without consuming per-facet retry attempts.
+     */
+    public function deferAutoSync(string $websiteId, int $seconds): void
+    {
+        if ($websiteId === '') {
+            return;
+        }
+
+        $seconds = max(1, $seconds);
+        $cache = Craft::$app->getCache();
+        $cache->delete($this->_autoSyncTimeGuardResetCacheKey($websiteId));
+        $cache->set($this->_autoSyncDeferredCacheKey($websiteId), true, $seconds);
     }
 
     /**
@@ -755,5 +774,13 @@ class SyncCoordinator extends Component
     private function _autoSyncTimeGuardResetCacheKey(string $websiteId): string
     {
         return "observatory_autosync_time_guard_reset_{$websiteId}";
+    }
+
+    /**
+     * Returns the cache key for a provider-requested auto-sync cooldown.
+     */
+    private function _autoSyncDeferredCacheKey(string $websiteId): string
+    {
+        return "observatory_autosync_deferred_{$websiteId}";
     }
 }
