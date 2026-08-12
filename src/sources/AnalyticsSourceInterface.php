@@ -79,7 +79,7 @@ interface AnalyticsSourceInterface
      * @author szenario
      * @since 1.0.0
      */
-    public function getBreakdowns(int $startAt, int $endAt, array $types, int $cacheDuration = 300, int $concurrency = 8): array;
+    public function getBreakdowns(int $startAt, int $endAt, array $types, int $cacheDuration = 300, int $concurrency = 2): array;
 
     /**
      * Fetches daily totals and breakdowns for many closed days.
@@ -91,7 +91,7 @@ interface AnalyticsSourceInterface
      * @author szenario
      * @since 1.0.0
      */
-    public function getDailyStatsAndBreakdownsBatch(array $days, array $breakdownTypes, int $concurrency = 8): array;
+    public function getDailyStatsAndBreakdownsBatch(array $days, array $breakdownTypes, int $concurrency = 2): array;
 
     /**
      * Fetches hourly visitor/pageview counts for many closed days.
@@ -102,7 +102,7 @@ interface AnalyticsSourceInterface
      * @author szenario
      * @since 1.0.0
      */
-    public function getHourlyPageviewsBatch(array $days, int $concurrency = 8): array;
+    public function getHourlyPageviewsBatch(array $days, int $concurrency = 2): array;
 
     /**
      * Fetches top custom events for many closed days.
@@ -113,5 +113,5 @@ interface AnalyticsSourceInterface
      * @author szenario
      * @since 1.0.0
      */
-    public function getEventsBatch(array $days, int $concurrency = 8): array;
+    public function getEventsBatch(array $days, int $concurrency = 2): array;
 }

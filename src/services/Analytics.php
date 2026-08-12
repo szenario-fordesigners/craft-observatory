@@ -6,9 +6,9 @@ use Craft;
 use craft\base\Component;
 use craft\helpers\App;
 use szenario\craftobservatory\models\Settings;
+use szenario\craftobservatory\Observatory;
 use szenario\craftobservatory\sources\AnalyticsSourceInterface;
 use szenario\craftobservatory\sources\PostHogAnalyticsSource;
-use szenario\craftobservatory\Observatory;
 
 /**
  * Selects and exposes the configured analytics source.
@@ -105,7 +105,7 @@ class Analytics extends Component implements AnalyticsSourceInterface
     /**
      * @inheritdoc
      */
-    public function getBreakdowns(int $startAt, int $endAt, array $types, int $cacheDuration = 300, int $concurrency = 8): array
+    public function getBreakdowns(int $startAt, int $endAt, array $types, int $cacheDuration = 300, int $concurrency = 2): array
     {
         return $this->source()->getBreakdowns($startAt, $endAt, $types, $cacheDuration, $concurrency);
     }
@@ -113,7 +113,7 @@ class Analytics extends Component implements AnalyticsSourceInterface
     /**
      * @inheritdoc
      */
-    public function getDailyStatsAndBreakdownsBatch(array $days, array $breakdownTypes, int $concurrency = 8): array
+    public function getDailyStatsAndBreakdownsBatch(array $days, array $breakdownTypes, int $concurrency = 2): array
     {
         return $this->source()->getDailyStatsAndBreakdownsBatch($days, $breakdownTypes, $concurrency);
     }
@@ -121,7 +121,7 @@ class Analytics extends Component implements AnalyticsSourceInterface
     /**
      * @inheritdoc
      */
-    public function getHourlyPageviewsBatch(array $days, int $concurrency = 8): array
+    public function getHourlyPageviewsBatch(array $days, int $concurrency = 2): array
     {
         return $this->source()->getHourlyPageviewsBatch($days, $concurrency);
     }
@@ -129,7 +129,7 @@ class Analytics extends Component implements AnalyticsSourceInterface
     /**
      * @inheritdoc
      */
-    public function getEventsBatch(array $days, int $concurrency = 8): array
+    public function getEventsBatch(array $days, int $concurrency = 2): array
     {
         return $this->source()->getEventsBatch($days, $concurrency);
     }

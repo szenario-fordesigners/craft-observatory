@@ -25,13 +25,13 @@ class SyncController extends Controller
     /**
      * Hand-pull the last X days from the selected analytics source and save to the local db.
      * Defaults to last 30 days.
-     * Example: `craft observatory/sync/historical 30 8`
-     * 
+     * Example: `craft observatory/sync/historical 30 2`
+     *
      * @param int $days Number of days to pull
      * @param int $concurrency Number of concurrent requests
      * @return int
      */
-    public function actionHistorical(int $days = 30, int $concurrency = 8): int
+    public function actionHistorical(int $days = 30, int $concurrency = 2): int
     {
         $this->stdout("Starting sync for the last {$days} days of analytics stats (concurrency {$concurrency})...\n");
 
