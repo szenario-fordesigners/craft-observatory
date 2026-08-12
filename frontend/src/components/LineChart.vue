@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VisXYContainer, VisLine, VisAxis } from '@unovis/vue'
+import { VisXYContainer, VisLine, VisAxis, VisCrosshair, VisTooltip } from '@unovis/vue'
 import { computed, ref, onMounted } from 'vue'
 import type { AnalyticsPageviews } from '@/shared/analyticsTypes';
 
@@ -50,12 +50,16 @@ const tickFormat = (x: number) => {
     return new Date(x).toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
+const hoverTemplate = (d: DataRecord) => `${tickFormat(d.x)}: ${d.y.toLocaleString()}`;
+
 </script>
 
 <template>
     <div ref="rootEl">
-        <VisXYContainer class="observatory-cp-line" height="250">
-            <VisLine :data="chartData" :color="lineColor" :x="(d: DataRecord) => d.x" :y="(d: DataRecord) => d.y" />
+        <VisXYContainer :data="chartData" class="observatory-cp-line" height="250">
+            <VisLine :color="lineColor" :x="(d: DataRecord) => d.x" :y="(d: DataRecord) => d.y" />
+            <VisCrosshair :color="lineColor" :template="hoverTemplate" />
+            <VisTooltip />
             <VisAxis type="x" :tickFormat="tickFormat" />
             <VisAxis type="y" />
         </VisXYContainer>
