@@ -9,10 +9,10 @@ use craft\helpers\StringHelper;
 use szenario\craftobservatory\helpers\AnalyticsTime;
 use szenario\craftobservatory\jobs\SyncDailyStatsJob;
 use szenario\craftobservatory\jobs\SyncRecentDaysJob;
+use szenario\craftobservatory\Observatory;
 use szenario\craftobservatory\records\DailyStats;
 use szenario\craftobservatory\records\HourlyStats;
 use szenario\craftobservatory\records\SyncState;
-use szenario\craftobservatory\Observatory;
 
 /**
  * Coordinates background syncing of historical analytics stats into the local DB.
@@ -94,54 +94,62 @@ class SyncCoordinator extends Component
             }
         }
 
-        // Dedupe pending jobs across rapid concurrent renders. The pending value stores
-        // the `days` window already queued, so a request that needs a wider backfill is
-        // still allowed through when the pending coverage spans fewer days. The key
-        // expires on its own after $throttleSeconds. Jobs reset the time guard, but not
-        // this pending coverage guard, otherwise queued chunks could be duplicated.
-        $pendingKey = "observatory_autosync_pending_{$websiteId}";
-        $existingPending = $cache->get($pendingKey);
-        if ($existingPending !== false && (int) $existingPending >= $days) {
-            Craft::debug("autoSyncMissingDays skipped: pending jobs already cover {$existingPending} day(s).", 'observatory');
+        // Serialize the read/update/enqueue sequence across concurrent widget requests.
+        $enqueueLockKey = $this->_autoSyncEnqueueLockCacheKey($websiteId);
+        if (!$cache->add($enqueueLockKey, true, 10)) {
+            Craft::debug('autoSyncMissingDays skipped: another request is enqueueing sync jobs.', 'observatory');
             return false;
         }
-        $cache->set($pendingKey, $days, $throttleSeconds);
 
-        if (!$isFirstRun) {
-            $cache->set($this->_autoSyncLastAttemptCacheKey($websiteId), 1, $throttleSeconds);
+        try {
+            // The pending value stores the widest queued window. Widening an existing
+            // window queues only the uncovered offsets, never duplicate recent/chunk jobs.
+            $pendingKey = "observatory_autosync_pending_{$websiteId}";
+            $existingPending = $cache->get($pendingKey);
+            $coveredDays = $existingPending === false ? 0 : (int) $existingPending;
+            if ($coveredDays >= $days) {
+                Craft::debug("autoSyncMissingDays skipped: pending jobs already cover {$coveredDays} day(s).", 'observatory');
+                return false;
+            }
+            $cache->set($pendingKey, $days, $throttleSeconds);
+
+            if (!$isFirstRun) {
+                $cache->set($this->_autoSyncLastAttemptCacheKey($websiteId), 1, $throttleSeconds);
+            }
+
+            if ($timeGuardWasReset) {
+                $cache->delete($this->_autoSyncTimeGuardResetCacheKey($websiteId));
+            }
+
+            $queue = Craft::$app->getQueue();
+
+            // The recent job is needed only when it isn't already covered.
+            $recentDays = Observatory::EVENTS_CLOSED_DAYS;
+            if ($coveredDays < $recentDays) {
+                $queue->push(new SyncRecentDaysJob([
+                    'websiteId' => $websiteId,
+                ]));
+            }
+
+            // Queue only backfill offsets not covered by the existing pending window.
+            $batchCount = 0;
+            foreach ($this->_backfillChunks($days, $coveredDays) as [$start, $end]) {
+                $queue->push(new SyncDailyStatsJob([
+                    'websiteId' => $websiteId,
+                    'startOffset' => $start,
+                    'endOffset' => $end,
+                ]));
+                $batchCount++;
+            }
+
+            Craft::info(
+                "Queued sync up to {$days} day(s) with {$batchCount} new backfill batch(es) for websiteId={$websiteId}, previousCoverage={$coveredDays}.",
+                'observatory'
+            );
+            return true;
+        } finally {
+            $cache->delete($enqueueLockKey);
         }
-
-        if ($timeGuardWasReset) {
-            $cache->delete($this->_autoSyncTimeGuardResetCacheKey($websiteId));
-        }
-
-        $queue = Craft::$app->getQueue();
-
-        // Fetch any unsynced days in the rolling recent window (daily + hourly + events).
-        // Already-synced days are skipped — each day is fetched exactly once.
-        $recentDays = Observatory::EVENTS_CLOSED_DAYS;
-        $queue->push(new SyncRecentDaysJob([
-            'websiteId' => $websiteId,
-        ]));
-
-        // Backfill everything older than the recent window in fixed-size chunks so a
-        // large window never times out a single job. All chunks are queued up front.
-        $batchCount = 0;
-        for ($start = $recentDays + 1; $start <= $days; $start += SyncDailyStatsJob::BATCH_SIZE) {
-            $end = min($start + SyncDailyStatsJob::BATCH_SIZE - 1, $days);
-            $queue->push(new SyncDailyStatsJob([
-                'websiteId' => $websiteId,
-                'startOffset' => $start,
-                'endOffset' => $end,
-            ]));
-            $batchCount++;
-        }
-
-        Craft::info(
-            "Queued SyncRecentDaysJob + {$batchCount} SyncDailyStatsJob batch(es) for websiteId={$websiteId}, days={$days}.",
-            'observatory'
-        );
-        return true;
     }
 
     /**
@@ -475,7 +483,7 @@ class SyncCoordinator extends Component
 
         $states = $this->_loadFacetStates($websiteId, min($dates), max($dates), $facets);
 
-        return array_values(array_filter($daySpecs, function (array $day) use ($states, $facets): bool {
+        return array_values(array_filter($daySpecs, function(array $day) use ($states, $facets): bool {
             foreach ($facets as $facet) {
                 if ($this->_facetNeedsWork($states["{$day['date']}|{$facet}"] ?? null)) {
                     return true;
@@ -674,7 +682,7 @@ class SyncCoordinator extends Component
             $rows = [];
             $now = Db::prepareDateForDb(new \DateTime());
             foreach ($events as $event) {
-                $name = (string) ($event['x'] ?? '');
+                $name = $event['x'];
                 if ($name === '') {
                     continue;
                 }
@@ -682,7 +690,7 @@ class SyncCoordinator extends Component
                     $websiteId,
                     $date,
                     $name,
-                    (int) ($event['y'] ?? 0),
+                    (int) $event['y'],
                     $now,
                     $now,
                     StringHelper::UUID(),
@@ -782,5 +790,30 @@ class SyncCoordinator extends Component
     private function _autoSyncDeferredCacheKey(string $websiteId): string
     {
         return "observatory_autosync_deferred_{$websiteId}";
+    }
+
+    /**
+     * Returns the cache key serializing sync job enqueue decisions.
+     */
+    private function _autoSyncEnqueueLockCacheKey(string $websiteId): string
+    {
+        return "observatory_autosync_enqueue_lock_{$websiteId}";
+    }
+
+    /**
+     * Returns fixed-size backfill chunks not covered by an existing pending window.
+     *
+     * @return array<int,array{0:int,1:int}>
+     */
+    private function _backfillChunks(int $days, int $coveredDays): array
+    {
+        $chunks = [];
+        $firstUncovered = max(Observatory::EVENTS_CLOSED_DAYS + 1, $coveredDays + 1);
+
+        for ($start = $firstUncovered; $start <= $days; $start += SyncDailyStatsJob::BATCH_SIZE) {
+            $chunks[] = [$start, min($start + SyncDailyStatsJob::BATCH_SIZE - 1, $days)];
+        }
+
+        return $chunks;
     }
 }
