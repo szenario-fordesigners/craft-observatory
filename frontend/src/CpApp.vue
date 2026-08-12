@@ -334,18 +334,6 @@ watch(
       </div>
     </div>
 
-    <!-- Heatmap: traffic by hour of day -->
-    <div class="mb-8 rounded-[0.7rem] bg-observatory-fg/[0.06] p-4">
-      <h2 class="mb-3 text-sm font-medium text-observatory-fg">Traffic by hour of day</h2>
-      <HeatmapChart
-        :cells="heatmapData?.cells ?? []"
-        :max-visitors="heatmapData?.maxVisitors ?? 0"
-        :days-with-data="heatmapData?.daysWithData ?? 0"
-        :loading="heatmapLoading"
-        :locale="locale"
-      />
-    </div>
-
     <!-- Grid Layout for Metrics -->
     <div class="grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
       <!-- Left Column: Pages & Sources -->
@@ -502,15 +490,27 @@ watch(
           <MetricList :data="metricsData[locTab] ?? []" :loading="metricsLoading" />
         </div>
       </div>
-    </div>
 
-    <!-- World map: visitors by country -->
-    <div class="mt-8 rounded-[0.7rem] bg-observatory-fg/[0.06] p-4">
-      <h2 class="mb-3 text-sm font-medium text-observatory-fg">Visitors by country</h2>
-      <CountryMap
-        :countries="metricsLoading ? null : (metricsData.country ?? [])"
-        :locale="locale"
-      />
+      <!-- Heatmap: traffic by hour of day -->
+      <div class="rounded-[0.7rem] bg-observatory-fg/[0.06] p-4">
+        <h2 class="mb-3 text-sm font-medium text-observatory-fg">Traffic by hour of day</h2>
+        <HeatmapChart
+          :cells="heatmapData?.cells ?? []"
+          :max-visitors="heatmapData?.maxVisitors ?? 0"
+          :days-with-data="heatmapData?.daysWithData ?? 0"
+          :loading="heatmapLoading"
+          :locale="locale"
+        />
+      </div>
+
+      <!-- World map: visitors by country -->
+      <div class="rounded-[0.7rem] bg-observatory-fg/[0.06] p-4">
+        <h2 class="mb-3 text-sm font-medium text-observatory-fg">Visitors by country</h2>
+        <CountryMap
+          :countries="metricsLoading ? null : (metricsData.country ?? [])"
+          :locale="locale"
+        />
+      </div>
     </div>
   </div>
 </template>
