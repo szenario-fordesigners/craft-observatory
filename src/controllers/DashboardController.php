@@ -165,7 +165,14 @@ class DashboardController extends Controller
             $endAt
         );
 
-        return $this->asJson($stats ?? []);
+        if ($stats === null) {
+            return $this->asJson([
+                'error' => 'Analytics provider is temporarily unavailable.',
+                'temporary' => true,
+            ])->setStatusCode(503);
+        }
+
+        return $this->asJson($stats);
     }
 
     /**

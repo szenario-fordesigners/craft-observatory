@@ -30,6 +30,7 @@ const currentData = ref<AnalyticsPageviews | null>(props.pageviews ?? null);
 
 const statsData = ref<AnalyticsStats | null>(null);
 const statsLoading = ref(false);
+const statsError = ref<string | null>(null);
 
 const pageTab = ref<'url' | 'entry' | 'exit'>('url');
 const sourceTab = ref<'referrer' | 'channel'>('referrer');
@@ -59,6 +60,11 @@ interface DashboardDataResponse {
   lastSyncedAt?: string | null;
   missingDays?: string[];
   _status?: AnalyticsStatus;
+}
+
+interface StatsErrorResponse {
+  error: string;
+  temporary: true;
 }
 
 let dashboardAbortController: AbortController | null = null;
@@ -181,10 +187,14 @@ const fetchStatsData = async (showLoading = true) => {
       signal: abortController.signal,
     });
 
-    if (response.ok) {
-      const data = (await response.json()) as AnalyticsStats;
-      if (requestId === statsRequestId) {
+    const data = (await response.json()) as AnalyticsStats | StatsErrorResponse;
+    if (requestId === statsRequestId) {
+      if (response.ok && !('error' in data)) {
         statsData.value = data;
+        statsError.value = null;
+      } else {
+        statsError.value =
+          'error' in data ? data.error : 'Analytics provider is temporarily unavailable.';
       }
     }
   } catch (e) {
@@ -193,6 +203,9 @@ const fetchStatsData = async (showLoading = true) => {
     }
 
     console.error('Error fetching dashboard stats', e);
+    if (requestId === statsRequestId) {
+      statsError.value = 'Analytics stats could not be loaded. Please try again shortly.';
+    }
   } finally {
     if (requestId === statsRequestId) {
       statsLoading.value = false;
@@ -242,7 +255,9 @@ const heatmapFreshnessMessage = computed(() =>
     : null,
 );
 
-const cpFreshnessMessage = computed(() => freshnessMessage.value ?? heatmapFreshnessMessage.value);
+const cpNoticeMessage = computed(
+  () => statsError.value ?? freshnessMessage.value ?? heatmapFreshnessMessage.value,
+);
 
 const stopHeatmapPolling = () => {
   if (heatmapPollTimer) {
@@ -306,10 +321,10 @@ watch(
     <StatusNotice :status="status" variant="cp" />
 
     <div
-      v-if="cpFreshnessMessage"
+      v-if="cpNoticeMessage"
       class="mb-4 rounded-[0.7rem] bg-observatory-fg/[0.08] px-4 py-3 text-sm text-observatory-fg/80"
     >
-      {{ cpFreshnessMessage }}
+      {{ cpNoticeMessage }}
     </div>
 
     <div class="mb-6 flex items-center justify-between">
