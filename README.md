@@ -21,9 +21,7 @@
 
 <br />
 
-*This plugin is free via the Craft Plugin Store.*
-
-<img src="images/widgets.png"/>
+<div align="center"><i>This plugin is free via the Craft Plugin Store.</i></div>
 
 ## Features ✨
 
@@ -40,9 +38,10 @@
 
 ## Installation 📦
 
-**Plugin Store:** search for "observatory" in the Craft Plugin Store and press Install.
+### Plugin Store
+[Install observatory from the Craft Plugin Store](https://plugins.craftcms.com/observatory)
 
-**Composer:**
+### Composer
 
 ```bash
 composer require szenario/craft-observatory
