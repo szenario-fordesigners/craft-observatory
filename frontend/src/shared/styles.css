@@ -6,6 +6,7 @@
 
 .pane:has(.observatory-widget) {
   background-color: var(--observatory-bg) !important;
+  box-shadow: 0 0 0 0px var(--observatory-fg) !important;
   border-radius: 1.25rem !important;
   container-type: inline-size;
   container-name: observatory-pane;
