@@ -1,6 +1,6 @@
 <br />
 
-<div align="center"><strong>observatory: NICE TAGLINE???</strong></div>
+<div align="center"><strong>observatory: see who's out there.</strong></div>
 
 <img src="images/header.png"/>
 <div align="center"><strong>PostHog analytics, native to the Craft CMS control panel.</strong></div>
