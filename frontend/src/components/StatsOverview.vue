@@ -34,8 +34,9 @@ const formatTime = (seconds: number) => {
   return `${m}m ${s}s`
 }
 
-const formatPct = (change: number) => {
-    if (!change || change === 0) return '0%'
+const formatPct = (change: number | null) => {
+    if (change === null) return '—'
+    if (!change) return '0%'
     return `${change > 0 ? '+' : ''}${Math.round(change)}%`
 }
 
@@ -57,8 +58,11 @@ const formatedStats = computed(() => {
     const sessionDurationSeconds = statsObj.sessionDurationSeconds || 0;
     const prevSessionDurationSeconds = compObj.sessionDurationSeconds || 0;
 
+    // No prior value means no percentage exists: either the server sent no comparison window,
+    // or the period genuinely had zero traffic and growth from zero is undefined. Both render
+    // as "—" — inventing +100% here is what made every tile claim a doubling.
     const calculateChange = (curr: number, prev: number) => {
-        if (prev === 0) return curr > 0 ? 100 : 0;
+        if (prev === 0) return null;
         return ((curr - prev) / prev) * 100;
     };
 
@@ -70,35 +74,19 @@ const formatedStats = computed(() => {
     const visitsChange = calculateChange(visits, prevVisits);
     const pageviewsChange = calculateChange(pageviews, prevPageviews);
 
+    // trend stays null when there is no percentage, so the template renders no arrow at all
+    // rather than the flat one Math.sign(0) would give a genuinely-unknown trend.
+    const tile = (value: string, change: number | null) => ({
+        value,
+        formatChange: formatPct(change),
+        trend: change === null ? null : Math.sign(change),
+    })
+
     return {
-        visitors: {
-            value: formatNumber(visitors),
-            change: visitorsChange,
-            formatChange: formatPct(visitorsChange),
-            trend: Math.sign(visitorsChange || 0),
-            reverseColor: false
-        },
-        visits: {
-            value: formatNumber(visits),
-            change: visitsChange,
-            formatChange: formatPct(visitsChange),
-            trend: Math.sign(visitsChange || 0),
-            reverseColor: false
-        },
-        pageviews: {
-            value: formatNumber(pageviews),
-            change: pageviewsChange,
-            formatChange: formatPct(pageviewsChange),
-            trend: Math.sign(pageviewsChange || 0),
-            reverseColor: false
-        },
-        visitDuration: {
-            value: formatTime(currDuration),
-            change: durationChange,
-            formatChange: formatPct(durationChange),
-            trend: Math.sign(durationChange || 0),
-            reverseColor: false
-        }
+        visitors: tile(formatNumber(visitors), visitorsChange),
+        visits: tile(formatNumber(visits), visitsChange),
+        pageviews: tile(formatNumber(pageviews), pageviewsChange),
+        visitDuration: tile(formatTime(currDuration), durationChange),
     }
 })
 
@@ -123,9 +111,9 @@ const formatedStats = computed(() => {
             <div class="text-[3rem] leading-none text-observatory-fg mb-2">{{ stat.value }}</div>
 
             <div class="text-sm font-medium flex items-center justify-center gap-1 text-observatory-fg/70">
-                <svg v-if="stat.trend > 0" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
-                <svg v-else-if="stat.trend < 0" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
-                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14"></path></svg>
+                <svg v-if="stat.trend === 1" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                <svg v-else-if="stat.trend === -1" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                <svg v-else-if="stat.trend === 0" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14"></path></svg>
                 {{ stat.formatChange }}
             </div>
             
