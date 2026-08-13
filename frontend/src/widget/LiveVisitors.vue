@@ -46,14 +46,30 @@ const countFontSize = computed(() => {
   return '70px';
 });
 
-// The satellite orbits faster the busier the site is. Speed ramps linearly with
+// The ring orbits faster the busier the site is. Speed ramps linearly with
 // visitors and saturates at SPEED_CAP, so beyond that it can't whip around too fast.
 const SPEED_CAP = 30;
 const SLOW_SECONDS = 12; // one lap at 0 visitors
 const FAST_SECONDS = 2; // one lap at the cap and above
-const orbitDuration = computed(() => {
-  const fraction = Math.min(data.value?.visitors ?? 0, SPEED_CAP) / SPEED_CAP;
-  return `${SLOW_SECONDS - fraction * (SLOW_SECONDS - FAST_SECONDS)}s`;
+
+// Each dot laps at its own pace, so the ring drifts out of formation and bunches up
+// instead of turning as one rigid wheel. Deterministic per index (a sine hash, not
+// Math.random) so a dot keeps its pace across re-renders as the count changes.
+const PACE_SPREAD = 0.45; // ±22% around the base lap time
+const paceFor = (i: number): number => 1 - PACE_SPREAD / 2 + ((Math.sin(i * 127.1) + 1) / 2) * PACE_SPREAD;
+
+// One orbiting dot per visitor, evenly spaced, capped so the ring stays readable.
+const DOT_CAP = 20;
+const dots = computed(() => {
+  const visitors = data.value?.visitors ?? 0;
+  const count = Math.min(visitors, DOT_CAP);
+  const fraction = Math.min(visitors, SPEED_CAP) / SPEED_CAP;
+  const baseSeconds = SLOW_SECONDS - fraction * (SLOW_SECONDS - FAST_SECONDS);
+
+  return Array.from({ length: count }, (_, i) => ({
+    angle: `${(i * 360) / count}deg`,
+    duration: `${(baseSeconds * paceFor(i)).toFixed(2)}s`,
+  }));
 });
 </script>
 
@@ -78,8 +94,13 @@ const orbitDuration = computed(() => {
           </CrossFade>
         </div>
 
-        <div class="observatory-live__orbit" :style="{ animationDuration: orbitDuration }" aria-hidden="true">
-          <span class="observatory-live__satellite"></span>
+        <div v-if="dots.length" class="observatory-live__orbit" aria-hidden="true">
+          <span
+            v-for="(dot, i) in dots"
+            :key="i"
+            class="observatory-live__spoke"
+            :style="{ '--observatory-live-angle': dot.angle, animationDuration: dot.duration }"
+          ></span>
         </div>
       </div>
     </template>
@@ -104,7 +125,9 @@ const orbitDuration = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem 0;
+  /* The stage only sizes to the circle — the orbit is absolute — so reserve exactly the
+     dots' reach past its edge: the gap plus the dot's own overhanging half. */
+  padding: calc(var(--observatory-live-gap) + var(--observatory-live-satellite) / 2) 0;
 }
 
 .observatory-live__circle {
@@ -133,10 +156,9 @@ const orbitDuration = computed(() => {
   visibility: hidden;
 }
 
-/* A square box centered on the circle, spun by the animation. Its width is sized so
-   that the satellite — riding the box's top edge — sits exactly --observatory-live-gap
-   beyond the circle's edge, tracing a concentric path at a fixed distance.
-   animation-duration is set inline per visitor count. */
+/* A square box centered on the circle, holding the dots. Its width is sized so that a
+   dot — riding the box's top edge — sits exactly --observatory-live-gap beyond the
+   circle's edge, tracing a concentric path at a fixed distance. */
 .observatory-live__orbit {
   position: absolute;
   top: 50%;
@@ -144,13 +166,25 @@ const orbitDuration = computed(() => {
   width: calc(var(--observatory-live-circle) + 2 * var(--observatory-live-gap) + var(--observatory-live-satellite));
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  animation-name: observatory-orbit;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
   pointer-events: none;
 }
 
-.observatory-live__satellite {
+/* Each spoke fills the orbit box and carries one dot on its top edge, so spinning the
+   spoke walks the dot around the orbit. Its start angle and lap time come in inline,
+   per dot, which is what keeps the ring from turning as one rigid wheel.
+   ponytail: percentage-free — --observatory-live-circle is a % of the stage, which would
+   resolve against the element's own size inside a translate(). */
+.observatory-live__spoke {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--observatory-live-angle));
+  animation-name: observatory-orbit;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.observatory-live__spoke::before {
+  content: '';
   position: absolute;
   top: 0;
   left: 50%;
@@ -161,18 +195,20 @@ const orbitDuration = computed(() => {
   transform: translate(-50%, -50%);
 }
 
+/* Starts from the spoke's own angle so each dot laps from where it sits. */
 @keyframes observatory-orbit {
   from {
-    transform: translate(-50%, -50%) rotate(0deg);
+    transform: rotate(var(--observatory-live-angle));
   }
   to {
-    transform: translate(-50%, -50%) rotate(360deg);
+    transform: rotate(calc(var(--observatory-live-angle) + 360deg));
   }
 }
 
+/* Animation off leaves the static rotate() above, so the dots stay spread around the ring. */
 @media (prefers-reduced-motion: reduce) {
   .observatory-live__circle--skeleton,
-  .observatory-live__orbit {
+  .observatory-live__spoke {
     animation: none;
   }
 }
