@@ -64,10 +64,10 @@ php craft observatory/sync/yesterday
 # backfill the last X days (default 30), optional concurrency (default 2)
 php craft observatory/sync/historical 30 2
 ```
-
-## How the data gets there
-
-Closed days are immutable, so Observatory fetches them from PostHog once and stores them in local tables. Today is never mirrored — it's still accumulating, so it's fetched live on every request and merged on top.
+## Screenshots
+<img src="images/widgets.png"/>
+<br />
+<img src="images/control-panel.png"/>
 
 ## Support
 
