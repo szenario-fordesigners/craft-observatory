@@ -50,6 +50,7 @@
 		"name": "Observatory",
 		"developer": "szenario",
 		"documentationUrl": "https://github.com/szenario-fordesigners/craft-observatory",
+		"changelogUrl": "https://raw.githubusercontent.com/szenario-fordesigners/craft-observatory/main/CHANGELOG.md",
 		"class": "szenario\\craftobservatory\\Observatory"
 	},
 	"scripts": {
