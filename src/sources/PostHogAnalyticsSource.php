@@ -761,16 +761,20 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
     /**
      * Converts a millisecond timestamp into a HogQL DateTime expression.
      *
+     * Emitted as an epoch, never a datetime string. HogQL parses bare datetime literals in
+     * the *PostHog project's* timezone — `toDateTime()` is flagged tz_aware, so the project
+     * zone is appended as its last argument automatically — while the day/hour grouping
+     * expressions below bucket in Craft's timezone. A UTC-formatted string therefore shifted
+     * every window by the project's UTC offset relative to its own buckets, silently dropping
+     * the tail of each synced day. `fromUnixTimestamp()` is not tz_aware and takes an absolute
+     * instant, so the bounds no longer depend on how the PostHog project is configured.
+     *
      * @author szenario
      * @since 1.0.0
      */
     private function _toDateTime(int $ms): string
     {
-        $date = (new \DateTimeImmutable('@' . intdiv($ms, 1000)))
-            ->setTimezone(new \DateTimeZone('UTC'))
-            ->format('Y-m-d H:i:s');
-
-        return "toDateTime('{$date}')";
+        return 'fromUnixTimestamp(' . intdiv($ms, 1000) . ')';
     }
 
     /**
