@@ -315,6 +315,35 @@ class SyncCoordinator extends Component
     }
 
     /**
+     * Forgets the recorded sync state for a closed-day offset range, so the next pass treats
+     * those days as never attempted and refetches them.
+     *
+     * This is the only way to revisit a day the coordinator considers finished: a facet marked
+     * done is never re-fetched, and one that failed past {@see self::SYNC_MAX_ATTEMPTS} is left
+     * alone. The mirror rows are deliberately not deleted — a refetch overwrites them in place,
+     * so the dashboard keeps serving the old numbers until the new ones land rather than
+     * emptying out mid-sync.
+     *
+     * @return int Number of state rows forgotten.
+     */
+    public function forgetSyncState(string $websiteId, int $startOffset, int $endOffset): int
+    {
+        if ($websiteId === '') {
+            return 0;
+        }
+
+        // Larger offset = further back, so it supplies the lower date bound.
+        [$startOffset, $endOffset] = [min($startOffset, $endOffset), max($startOffset, $endOffset)];
+
+        return SyncState::deleteAll([
+            'and',
+            ['websiteId' => $websiteId],
+            ['>=', 'date', AnalyticsTime::dateOffset($endOffset)],
+            ['<=', 'date', AnalyticsTime::dateOffset($startOffset)],
+        ]);
+    }
+
+    /**
      * Loads SyncState rows for a date range + facet set, keyed "date|facet".
      *
      * @param string[] $facets

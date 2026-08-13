@@ -54,19 +54,27 @@ php craft plugin/install observatory
 2. Enter your PostHog host, project ID and personal API key
 3. After the initial sync, you are good to go!
 
-## Console Commands
-
-```bash
-# pull yesterday into the local mirror
-php craft observatory/sync/yesterday
-
-# backfill the last X days (default 30), optional concurrency (default 2)
-php craft observatory/sync/historical 30 2
-```
 ## Screenshots
 <img src="images/widgets.png"/>
 <br />
 <img src="images/control-panel.png"/>
+
+
+## Console Commands
+
+Syncing runs automatically in the background, so this command is optional — useful as a cron
+entry point to keep the mirror warm, or to rebuild stored data.
+
+```bash
+# pull any missing closed days (default 30) into the local mirror
+php craft observatory/sync
+
+# cover a longer window
+php craft observatory/sync 90
+
+# refetch days already recorded as synced
+php craft observatory/sync 90 --force
+```
 
 ## Support
 

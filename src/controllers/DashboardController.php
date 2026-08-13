@@ -120,7 +120,7 @@ class DashboardController extends Controller
 
         return $this->asJson([
             'pageviews' => $includePageviews ? $plugin->stats->getRangePageviews($startAt, $endAt, $unit) : null,
-            'stats' => $includeStats ? $plugin->analytics->getTotals($startAt, $endAt) : null,
+            'stats' => $includeStats ? $this->totalsWithComparison($startAt, $endAt) : null,
             'metrics' => $metrics,
             '_syncing' => $freshness['_syncing'],
             'lastSyncedAt' => $freshness['lastSyncedAt'],
@@ -160,10 +160,7 @@ class DashboardController extends Controller
         [$startAt, $endAt] = $this->resolveRange();
 
         \Craft::$app->getSession()->close();
-        $stats = Observatory::getInstance()->analytics->getTotals(
-            $startAt,
-            $endAt
-        );
+        $stats = $this->totalsWithComparison($startAt, $endAt);
 
         if ($stats === null) {
             return $this->asJson([
@@ -324,6 +321,46 @@ class DashboardController extends Controller
         $endAt = $endAtParam !== null ? (int) $endAtParam : $bucketedNow;
 
         return [$startAt, min($endAt, $bucketedNow)];
+    }
+
+    /**
+     * Range totals, plus the equal-length preceding window under a `comparison` key.
+     *
+     * The client derives its KPI trend percentages from this pair. Without a prior window
+     * it has nothing to compare against, so `comparison` is omitted rather than defaulted —
+     * a missing key means "no trend", which is not the same as a prior period of zero.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function totalsWithComparison(int $startAt, int $endAt): ?array
+    {
+        $analytics = Observatory::getInstance()->analytics;
+        $totals = $analytics->getTotals($startAt, $endAt);
+
+        if ($totals === null) {
+            return null;
+        }
+
+        [$priorStart, $priorEnd] = $this->comparisonRange($startAt, $endAt);
+        $comparison = $analytics->getTotals($priorStart, $priorEnd);
+
+        return $comparison !== null ? $totals + ['comparison' => $comparison] : $totals;
+    }
+
+    /**
+     * The equal-length window immediately preceding [$startAt, $endAt].
+     *
+     * Trends are only meaningful like-for-like, so the prior window spans exactly as long as
+     * the requested one. It ends 1ms before $startAt because getTotals() bounds are inclusive
+     * on both ends — sharing the boundary instant would count it in both windows.
+     *
+     * @return array{0:int,1:int}
+     */
+    private function comparisonRange(int $startAt, int $endAt): array
+    {
+        $length = max(0, $endAt - $startAt);
+
+        return [$startAt - $length - 1, $startAt - 1];
     }
 
     /**

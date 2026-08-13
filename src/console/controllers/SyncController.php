@@ -3,8 +3,9 @@
 namespace szenario\craftobservatory\console\controllers;
 
 use craft\console\Controller;
-use szenario\craftobservatory\helpers\AnalyticsTime;
+use szenario\craftobservatory\exceptions\AnalyticsRateLimitedException;
 use szenario\craftobservatory\Observatory;
+use szenario\craftobservatory\services\SyncCoordinator;
 use yii\console\ExitCode;
 
 /**
@@ -13,76 +14,94 @@ use yii\console\ExitCode;
 class SyncController extends Controller
 {
     /**
-     * Syncs yesterday's stats into the local database.
-     *
-     * @return int
+     * @var bool Refetch days the coordinator already considers finished, instead of skipping them.
      */
-    public function actionYesterday(): int
+    public bool $force = false;
+
+    /**
+     * @inheritdoc
+     */
+    public function options($actionID): array
     {
-        return $this->actionHistorical(1);
+        return array_merge(parent::options($actionID), ['force']);
     }
 
     /**
-     * Hand-pull the last X days from the selected analytics source and save to the local db.
-     * Defaults to last 30 days.
-     * Example: `craft observatory/sync/historical 30 2`
+     * Pulls closed days from the selected analytics source into the local mirror.
      *
-     * @param int $days Number of days to pull
-     * @param int $concurrency Number of concurrent requests
+     * Runs the same fetch routines the queue jobs use, so the CLI and the background sync can
+     * never disagree about what a synced day contains. Days already recorded as finished are
+     * skipped unless --force is passed. Today is never fetched — the live widget queries cover it.
+     *
+     * Optional as a cron entry point (keeps the mirror warm so the CP never waits on a cold
+     * backfill), and the recovery path when stored data needs rebuilding.
+     *
+     * Example: `php craft observatory/sync 90 --force`
+     *
+     * @param int $days How many closed days back to cover.
      * @return int
      */
-    public function actionHistorical(int $days = 30, int $concurrency = 2): int
+    public function actionIndex(int $days = 30): int
     {
-        $this->stdout("Starting sync for the last {$days} days of analytics stats (concurrency {$concurrency})...\n");
-
         $plugin = Observatory::getInstance();
-        $successCount = 0;
+        $websiteId = $plugin->analytics->getStorageKey();
 
-        $daySpecs = [];
-        for ($i = 1; $i <= $days; $i++) {
-            $dateStr = AnalyticsTime::dateOffset($i);
-            [$startAt, $endAt] = AnalyticsTime::dayBounds($dateStr);
-
-            $daySpecs[] = [
-                'date' => $dateStr,
-                'startAt' => $startAt,
-                'endAt' => $endAt,
-            ];
+        if (empty($websiteId)) {
+            $this->stderr("No analytics source configured — add the provider credentials in Settings → Plugins → Observatory.\n");
+            return ExitCode::CONFIG;
         }
 
-        $metricsTypes = ['url', 'title', 'referrer', 'os', 'browser', 'device', 'country', 'region', 'city'];
+        $days = max(1, $days);
 
-        $batch = $plugin->analytics->getDailyStatsAndBreakdownsBatch($daySpecs, $metricsTypes, $concurrency);
-
-        foreach ($daySpecs as $day) {
-            $dateStr = $day['date'];
-            $this->stdout("Fetching: {$dateStr}... ");
-
-            $row = $batch[$dateStr] ?? null;
-            $stats = $row['stats'] ?? null;
-            $metrics = $row['metrics'] ?? [];
-            $errors = $row['errors'] ?? [];
-
-            if (empty($stats)) {
-                $this->stderr("Failed to load basic stats.\n");
-                if (!empty($errors)) {
-                    foreach ($errors as $err) {
-                        $this->stderr("  - {$err}\n");
-                    }
-                }
-                continue;
-            }
-
-            $success = $plugin->sync->syncDailyStats($dateStr, $stats, $metrics);
-            if ($success) {
-                $this->stdout("Saved.\n");
-                $successCount++;
-            } else {
-                $this->stderr("Failed to save.\n");
-            }
+        if ($this->force) {
+            $forgotten = $plugin->sync->forgetSyncState($websiteId, 1, $days);
+            $this->stdout("Forgot {$forgotten} sync-state row(s).\n");
+            // ponytail: provider responses stay cached for up to 24h, so a --force inside that
+            // window can refetch straight from cache. Tag the PostHog query cache with a
+            // TagDependency if --force ever needs to guarantee a round trip.
+            $this->stdout("Cached provider responses (up to 24h) may be reused — run `php craft clear-caches/data` first to force a round trip.\n");
         }
 
-        $this->stdout("Successfully synced {$successCount} / {$days} days.\n");
+        // The facet subsets must match what this command actually fetches, or days look
+        // perpetually unsynced. Events cover only the recent window, matching the events
+        // widget, so asking for them over the whole range would never come up clean.
+        $statSpecs = $plugin->sync->findUnsyncedDaySpecs($websiteId, 1, $days, [
+            SyncCoordinator::FACET_DAILY,
+            SyncCoordinator::FACET_BREAKDOWNS,
+            SyncCoordinator::FACET_HOURLY,
+        ]);
+        $eventSpecs = $plugin->sync->findUnsyncedDaySpecs($websiteId, 1, min($days, Observatory::EVENTS_CLOSED_DAYS), [
+            SyncCoordinator::FACET_EVENTS,
+        ]);
+
+        if (empty($statSpecs) && empty($eventSpecs)) {
+            $this->stdout("Nothing to sync — the last {$days} closed day(s) are already complete.\n");
+            return ExitCode::OK;
+        }
+
+        $this->stdout('Syncing ' . \count($statSpecs) . ' day(s), plus events for ' . \count($eventSpecs) . " day(s)...\n");
+
+        try {
+            $daily = $plugin->sync->fetchAndStoreDailyStats($statSpecs);
+            $hourly = $plugin->sync->fetchAndStoreHourlyStats($statSpecs);
+            $events = $plugin->sync->fetchAndStoreEvents($eventSpecs);
+        } catch (AnalyticsRateLimitedException $e) {
+            $this->stderr("Stopped: provider rate limit active, retry in {$e->retryAfterSeconds}s.\n");
+            return ExitCode::TEMPFAIL;
+        }
+
+        foreach (['daily' => $daily, 'hourly' => $hourly, 'events' => $events] as $facet => $result) {
+            $this->stdout("  {$facet}: synced={$result['synced']} failed={$result['failed']}\n");
+        }
+
+        $failed = $daily['failed'] + $hourly['failed'] + $events['failed'];
+
+        if ($failed > 0) {
+            $this->stderr("{$failed} fetch(es) failed — see the Observatory logs. Retries are capped at " . SyncCoordinator::SYNC_MAX_ATTEMPTS . " attempts per facet.\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        $this->stdout("Done.\n");
         return ExitCode::OK;
     }
 }
