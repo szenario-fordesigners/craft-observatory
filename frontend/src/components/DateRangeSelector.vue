@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
-import { useDateRange, type CustomDateRange, type RangeValue } from '../composables/useDateRange';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { PRESET_RANGES, type CustomDateRange, type RangeValue } from '../composables/useDateRange';
 
 const props = defineProps({
   modelValue: {
@@ -18,10 +18,6 @@ const emit = defineEmits<{
   'update:customRange': [value: CustomDateRange];
 }>();
 
-const { availableRanges } = useDateRange();
-const presetRanges = computed(() =>
-  availableRanges.value.filter((range) => range.value !== 'custom'),
-);
 const isOpen = ref(false);
 const customStartDate = ref(props.customRange.startDate);
 const customEndDate = ref(props.customRange.endDate);
@@ -53,7 +49,7 @@ const getLabel = (val: string) => {
     return `${props.customRange.startDate} - ${props.customRange.endDate}`;
   }
 
-  return availableRanges.value.find((r) => r.value === val)?.label || 'Select range';
+  return PRESET_RANGES.find((r) => r.value === val)?.label || 'Select range';
 };
 
 watch(
@@ -122,7 +118,7 @@ onUnmounted(() => {
       >
         <div class="py-1">
           <button
-            v-for="range in presetRanges"
+            v-for="range in PRESET_RANGES"
             :key="range.value"
             @click="selectRange(range.value)"
             class="group flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-observatory-fg/10"

@@ -23,7 +23,7 @@ const props = defineProps<{
   locale?: string;
 }>();
 
-const { currentRangeValue, currentRange, customRange, setCustomRange } = useDateRange(
+const { currentRangeValue, customRange, rangeParams, setCustomRange } = useDateRange(
   (props.defaultPeriod as RangeValue) || '7d',
 );
 const currentData = ref<AnalyticsPageviews | null>(props.pageviews ?? null);
@@ -116,9 +116,9 @@ const fetchDashboardData = async (includePageviews = true, showLoading = true) =
       window.Craft.getActionUrl('observatory/dashboard/get-dashboard-data'),
       window.location.origin,
     );
-    url.searchParams.append('startAt', currentRange.value.startAt.toString());
-    url.searchParams.append('endAt', currentRange.value.endAt.toString());
-    url.searchParams.append('unit', currentRange.value.unit);
+    for (const [key, value] of Object.entries(rangeParams.value)) {
+      url.searchParams.append(key, value);
+    }
     url.searchParams.append('includePageviews', includePageviews ? '1' : '0');
     url.searchParams.append('includeStats', '0');
 
@@ -179,8 +179,9 @@ const fetchStatsData = async (showLoading = true) => {
       window.Craft.getActionUrl('observatory/dashboard/get-stats'),
       window.location.origin,
     );
-    url.searchParams.append('startAt', currentRange.value.startAt.toString());
-    url.searchParams.append('endAt', currentRange.value.endAt.toString());
+    for (const [key, value] of Object.entries(rangeParams.value)) {
+      url.searchParams.append(key, value);
+    }
 
     const response = await fetch(url.toString(), {
       headers: { Accept: 'application/json' },
@@ -304,7 +305,7 @@ watch(
 onUnmounted(stopHeatmapPolling);
 
 watch(
-  () => [currentRange.value.startAt, currentRange.value.endAt, currentRange.value.unit] as const,
+  rangeParams,
   (_newVal, oldVal) => {
     fetchDashboardData(oldVal !== undefined || !currentData.value);
     fetchStatsData();

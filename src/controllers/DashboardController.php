@@ -4,16 +4,45 @@ namespace szenario\craftobservatory\controllers;
 
 use craft\web\Controller;
 use szenario\craftobservatory\helpers\AnalyticsTime;
+use szenario\craftobservatory\Observatory;
 use szenario\craftobservatory\records\DailyEvents;
 use szenario\craftobservatory\services\SyncCoordinator;
-use szenario\craftobservatory\Observatory;
 use yii\web\Response;
 
 class DashboardController extends Controller
 {
     private const DEFAULT_METRIC_TYPES = ['url', 'entry', 'exit', 'referrer', 'channel', 'browser', 'os', 'device', 'country', 'region', 'city'];
-    private const ALLOWED_PAGEVIEW_UNITS = ['hour', 'day', 'month', 'year'];
     private const MAX_CP_FRESHNESS_DAYS = 366;
+
+    /**
+     * Window used when a request names no range — including the dashboard widgets, which
+     * request metrics without one.
+     */
+    private const DEFAULT_RANGE = '7d';
+
+    /**
+     * @inheritdoc
+     *
+     * Craft already gates the CP section itself and the nav item behind this permission, but it
+     * skips the check for action requests ({@see \craft\web\Application::handleRequest()}), so
+     * every endpoint here has to make it too — otherwise any user with CP access can read the
+     * full analytics by calling these directly, and via the dashboard widgets, which render
+     * outside the plugin's own URL segment.
+     *
+     * The permission is registered by Craft for any plugin with a CP section, so there is
+     * nothing to declare. Admins and Solo installs pass automatically
+     * ({@see \craft\elements\User::can()}).
+     */
+    public function beforeAction($action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+
+        $this->requirePermission('accessPlugin-' . Observatory::getInstance()->id);
+
+        return true;
+    }
 
     /**
      * Returns a 7×24 heatmap of average visitor counts by weekday and hour of day.
@@ -99,11 +128,7 @@ class DashboardController extends Controller
     public function actionGetDashboardData(): ?Response
     {
         $request = \Craft::$app->getRequest();
-        [$startAt, $endAt] = $this->resolveRange();
-        $unit = $this->normalizePageviewUnit($request->getParam('unit'));
-        if ($unit === null) {
-            return $this->asFailure('Invalid pageview unit', ['error' => 'Invalid pageview unit']);
-        }
+        [$startAt, $endAt, $unit] = $this->resolveRange();
 
         $includePageviews = (string) $request->getParam('includePageviews', '1') !== '0';
         $includeStats = (string) $request->getParam('includeStats', '1') !== '0';
@@ -136,12 +161,7 @@ class DashboardController extends Controller
      */
     public function actionGetPageviews(): ?Response
     {
-        $request = \Craft::$app->getRequest();
-        [$startAt, $endAt] = $this->resolveRange();
-        $unit = $this->normalizePageviewUnit($request->getParam('unit'));
-        if ($unit === null) {
-            return $this->asFailure('Invalid pageview unit', ['error' => 'Invalid pageview unit']);
-        }
+        [$startAt, $endAt, $unit] = $this->resolveRange();
 
         \Craft::$app->getSession()->close();
         $plugin = Observatory::getInstance();
@@ -295,32 +315,45 @@ class DashboardController extends Controller
     private const RANGE_BUCKET_SECONDS = 60;
 
     /**
-     * Resolves the [startAt, endAt] window (in ms) for a request.
+     * Resolves the [startAt, endAt, unit] window (ms) for a request.
      *
-     * endAt is capped at a {@see self::RANGE_BUCKET_SECONDS}-second boundary so that
-     * "now"-relative queries (today, last 7 days, …) share a stable cache key within
-     * each bucket instead of producing a unique per-second/per-ms key on every render.
-     * An explicit endAt that already lies in the past passes through unchanged, so
-     * historical ranges are never truncated. The default 7-day startAt is bucketed for
-     * the same reason; an explicit startAt (always a day boundary from the UI) is left
-     * as-is.
+     * The client names a range (`range=7d`, or `range=custom` with `startDate`/`endDate` as
+     * Y-m-d) and the boundaries are derived here, in the site's timezone. It deliberately does
+     * not accept raw startAt/endAt timestamps: those were computed from the browser clock, so
+     * a CP session in another zone selected a shifted window and then read the wrong day keys
+     * out of the mirror, which is bucketed in {@see AnalyticsTime::appTimeZone()}. The unit
+     * comes back with the window for the same reason — the two are one decision, and splitting
+     * them across the wire is what let them disagree.
      *
-     * @return array{0:int,1:int}
+     * @return array{0:int,1:int,2:string}
      */
     private function resolveRange(): array
     {
         $request = \Craft::$app->getRequest();
-        $bucketedNow = $this->bucketMs(time() * 1000);
+        $range = (string) $request->getParam('range', self::DEFAULT_RANGE);
 
-        $startAtParam = $request->getParam('startAt');
-        $startAt = $startAtParam !== null
-            ? (int) $startAtParam
-            : $this->bucketMs(strtotime('-7 days') * 1000);
+        $resolved = $range === 'custom'
+            ? AnalyticsTime::customRange(
+                (string) $request->getParam('startDate', ''),
+                (string) $request->getParam('endDate', ''),
+            )
+            : AnalyticsTime::presetRange($range);
 
-        $endAtParam = $request->getParam('endAt');
-        $endAt = $endAtParam !== null ? (int) $endAtParam : $bucketedNow;
+        // An unknown preset or malformed custom date falls back to the default window instead
+        // of erroring: these params come from our own CP UI, and a dashboard showing the last
+        // 7 days beats one showing an error banner.
+        $resolved ??= AnalyticsTime::presetRange(self::DEFAULT_RANGE)
+            ?? throw new \LogicException('The default range preset must resolve.');
 
-        return [$startAt, min($endAt, $bucketedNow)];
+        // endAt is capped at a {@see self::RANGE_BUCKET_SECONDS}-second boundary so that
+        // windows running up to "now" share a stable cache key within each bucket instead of
+        // producing a unique per-second key on every render. Presets whose endAt already lies
+        // in the past pass through untouched, so historical ranges are never truncated.
+        return [
+            $resolved['startAt'],
+            min($resolved['endAt'], $this->bucketMs(time() * 1000)),
+            $resolved['unit'],
+        ];
     }
 
     /**
@@ -437,17 +470,6 @@ class DashboardController extends Controller
             $closedDayOffsets[1],
             array_values(array_unique($facets)),
         );
-    }
-
-    private function normalizePageviewUnit(mixed $unit): ?string
-    {
-        if (!\is_string($unit)) {
-            return null;
-        }
-
-        $unit = trim($unit);
-
-        return \in_array($unit, self::ALLOWED_PAGEVIEW_UNITS, true) ? $unit : null;
     }
 
     /**
