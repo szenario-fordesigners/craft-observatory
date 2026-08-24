@@ -38,7 +38,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
 
         return [
             'configured' => $configured,
-            'apiKeyValid' => $configured ? !$this->_hasAuthError((string) $projectId) : false,
+            'apiKeyValid' => $configured ? !$this->_hasAuthError() : false,
             'source' => 'posthog',
         ];
     }
@@ -48,9 +48,44 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      */
     public function getStorageKey(): ?string
     {
-        $projectId = App::parseEnv(Observatory::getInstance()->getSettings()->posthogProjectId);
+        $id = $this->_connectionId();
 
-        return empty($projectId) ? null : "posthog:{$projectId}";
+        return $id === null ? null : "posthog:{$id}";
+    }
+
+    /**
+     * Identity of the configured PostHog connection: host *and* project, never project alone.
+     *
+     * Project IDs are per-instance sequential integers, so "1" on eu.posthog.com and "1" on a
+     * self-hosted instance are unrelated projects. Everything keyed on identity — the mirror's
+     * websiteId, the query response cache, the auth-error flag and the rate-limit cooldown —
+     * therefore has to include the host, or switching hosts silently reuses the previous
+     * instance's data.
+     *
+     * Null when either half is missing: a half-identified connection cannot query anyway, and
+     * returning a partial key would let a sync write into a mirror it cannot name.
+     */
+    private function _connectionId(): ?string
+    {
+        $settings = Observatory::getInstance()->getSettings();
+
+        return self::_connectionIdFor(App::parseEnv($settings->posthogHost), App::parseEnv($settings->posthogProjectId));
+    }
+
+    /**
+     * The settings-free half of {@see self::_connectionId()}, so the normalisation can be tested
+     * without booting Craft.
+     *
+     * The scheme is dropped so flipping http/https on one instance does not orphan its mirror;
+     * the host itself is what distinguishes one PostHog from another. Case and trailing slashes
+     * are normalised for the same reason — they are the same instance typed differently.
+     */
+    private static function _connectionIdFor(mixed $host, mixed $projectId): ?string
+    {
+        $host = \is_string($host) ? strtolower(rtrim(preg_replace('~^https?://~i', '', trim($host)) ?? '', '/')) : '';
+        $projectId = \is_string($projectId) || \is_int($projectId) ? trim((string) $projectId) : '';
+
+        return ($host === '' || $projectId === '') ? null : "{$host}:{$projectId}";
     }
 
     /**
@@ -390,15 +425,26 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
     /**
      * Returns the cache key for a HogQL query's result rows.
      *
-     * Keyed purely on the SQL so any caller running the same query — single or
-     * batched — shares one cached result.
+     * Keyed on the connection identity plus the SQL, so any caller running the same query
+     * against the same project — single or batched — shares one cached result, while an
+     * identical query against a different host or project does not. Without the identity,
+     * switching projects served the previous one's rows for up to 24h, and a background sync
+     * could persist them into the new project's mirror and mark the day complete.
      *
      * @author szenario
      * @since 1.0.0
      */
     private function _queryCacheKey(string $sql): string
     {
-        return 'posthog_query_' . md5($sql);
+        return self::_queryCacheKeyFor($this->_connectionId(), $sql);
+    }
+
+    /**
+     * The settings-free half of {@see self::_queryCacheKey()}.
+     */
+    private static function _queryCacheKeyFor(?string $connectionId, string $sql): string
+    {
+        return 'posthog_query_' . md5(($connectionId ?? 'unconfigured') . '|' . $sql);
     }
 
     /**
@@ -463,7 +509,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
 
         [$host, $projectId, $apiKey] = $context;
         try {
-            $this->_assertNotRateLimited($projectId);
+            $this->_assertNotRateLimited();
         } catch (AnalyticsRateLimitedException $e) {
             if ($throwOnRateLimit) {
                 throw $e;
@@ -492,8 +538,8 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
         $rateLimitException = null;
         $pool = new Pool($client, $requests(), [
             'concurrency' => min(2, max(1, $concurrency)),
-            'fulfilled' => function($response, $index) use (&$results, $pending, $cache, $cacheDuration, $projectId, $name) {
-                $this->_clearAuthError($projectId);
+            'fulfilled' => function($response, $index) use (&$results, $pending, $cache, $cacheDuration, $name) {
+                $this->_clearAuthError();
                 $key = (string) $index;
                 $body = json_decode($response->getBody()->getContents(), true);
                 $rows = \is_array($body) ? ($body['results'] ?? $body['query_status']['results'] ?? null) : null;
@@ -506,12 +552,12 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
                 }
                 $results[$key] = $rows;
             },
-            'rejected' => function($reason, $index) use (&$rateLimitException, $projectId, $name) {
+            'rejected' => function($reason, $index) use (&$rateLimitException, $name) {
                 if ($reason instanceof \Throwable) {
-                    $rateLimitException = $this->_rateLimitException($reason, $projectId) ?? $rateLimitException;
+                    $rateLimitException = $this->_rateLimitException($reason) ?? $rateLimitException;
                 }
                 if ($reason instanceof \Throwable && $this->_isAuthError($reason)) {
-                    $this->_markAuthError($projectId);
+                    $this->_markAuthError();
                 }
                 Craft::error("PostHog {$name} request ({$index}) failed: {$reason}", __METHOD__);
             },
@@ -547,7 +593,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
 
         [$host, $projectId, $apiKey] = $context;
         try {
-            $this->_assertNotRateLimited($projectId);
+            $this->_assertNotRateLimited();
         } catch (AnalyticsRateLimitedException $e) {
             if ($throwOnRateLimit) {
                 throw $e;
@@ -583,7 +629,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
                 return null;
             }
 
-            $this->_clearAuthError($projectId);
+            $this->_clearAuthError();
 
             $rows = $body['results'] ?? $body['query_status']['results'] ?? null;
             if (!\is_array($rows)) {
@@ -593,12 +639,12 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
 
             return $rows;
         } catch (GuzzleException $e) {
-            $rateLimitException = $this->_rateLimitException($e, $projectId);
+            $rateLimitException = $this->_rateLimitException($e);
             if ($throwOnRateLimit && $rateLimitException !== null) {
                 throw $rateLimitException;
             }
             if ($this->_isAuthError($e)) {
-                $this->_markAuthError($projectId);
+                $this->_markAuthError();
             }
             Craft::error("PostHog query failed for {$name}: {$e->getMessage()}", __METHOD__);
         } catch (\Throwable $e) {
@@ -669,9 +715,9 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      * @author szenario
      * @since 1.0.0
      */
-    private function _authErrorCacheKey(string $projectId): string
+    private function _authErrorCacheKey(): string
     {
-        return "posthog_auth_error_{$projectId}";
+        return 'posthog_auth_error_' . ($this->_connectionId() ?? 'unconfigured');
     }
 
     /**
@@ -680,9 +726,9 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      * @author szenario
      * @since 1.0.0
      */
-    private function _hasAuthError(string $projectId): bool
+    private function _hasAuthError(): bool
     {
-        return Craft::$app->getCache()->get($this->_authErrorCacheKey($projectId)) === true;
+        return Craft::$app->getCache()->get($this->_authErrorCacheKey()) === true;
     }
 
     /**
@@ -691,9 +737,9 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      * @author szenario
      * @since 1.0.0
      */
-    private function _markAuthError(string $projectId): void
+    private function _markAuthError(): void
     {
-        Craft::$app->getCache()->set($this->_authErrorCacheKey($projectId), true, 3600);
+        Craft::$app->getCache()->set($this->_authErrorCacheKey(), true, 3600);
     }
 
     /**
@@ -702,17 +748,17 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
      * @author szenario
      * @since 1.0.0
      */
-    private function _clearAuthError(string $projectId): void
+    private function _clearAuthError(): void
     {
-        Craft::$app->getCache()->delete($this->_authErrorCacheKey($projectId));
+        Craft::$app->getCache()->delete($this->_authErrorCacheKey());
     }
 
     /**
      * Stops requests while a project-level PostHog cooldown is active.
      */
-    private function _assertNotRateLimited(string $projectId): void
+    private function _assertNotRateLimited(): void
     {
-        $retryAt = Craft::$app->getCache()->get($this->_rateLimitCacheKey($projectId));
+        $retryAt = Craft::$app->getCache()->get($this->_rateLimitCacheKey());
         if ($retryAt !== false && (int) $retryAt > time()) {
             throw new AnalyticsRateLimitedException((int) $retryAt - time());
         }
@@ -721,7 +767,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
     /**
      * Converts a PostHog 429 into a shared project cooldown.
      */
-    private function _rateLimitException(\Throwable $e, string $projectId): ?AnalyticsRateLimitedException
+    private function _rateLimitException(\Throwable $e): ?AnalyticsRateLimitedException
     {
         if (!$e instanceof RequestException || !$e->hasResponse() || $e->getResponse()->getStatusCode() !== 429) {
             return null;
@@ -736,17 +782,17 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
         }
         $delay = max(1, $delay ?: 60);
 
-        Craft::$app->getCache()->set($this->_rateLimitCacheKey($projectId), time() + $delay, $delay);
+        Craft::$app->getCache()->set($this->_rateLimitCacheKey(), time() + $delay, $delay);
 
         return new AnalyticsRateLimitedException($delay);
     }
 
     /**
-     * Returns the shared project cooldown cache key.
+     * Returns the cooldown cache key, shared by every request to the same host and project.
      */
-    private function _rateLimitCacheKey(string $projectId): string
+    private function _rateLimitCacheKey(): string
     {
-        return "posthog_rate_limit_{$projectId}";
+        return 'posthog_rate_limit_' . ($this->_connectionId() ?? 'unconfigured');
     }
 
     /**
