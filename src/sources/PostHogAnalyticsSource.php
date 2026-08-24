@@ -10,6 +10,7 @@ use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Pool;
 use GuzzleHttp\Psr7\Request;
 use szenario\craftobservatory\exceptions\AnalyticsRateLimitedException;
+use szenario\craftobservatory\helpers\AnalyticsTime;
 use szenario\craftobservatory\Observatory;
 
 /**
@@ -291,6 +292,13 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             $errors = [];
             if ($statsByDate === null) {
                 $errors[] = 'PostHog totals query failed';
+            }
+            // Reported even though the events query alone is enough to fill a row: without it a
+            // failed sessions query is indistinguishable from a genuinely zero one, so the day
+            // was stored with sessionDurationSeconds = 0, marked complete and never revisited —
+            // permanently wrong average visit duration with nothing anywhere to say so.
+            if ($sessionRows === null) {
+                $errors[] = 'PostHog session totals query failed';
             }
             if (!empty($failedBreakdowns)) {
                 $errors[] = 'PostHog breakdown query failed: ' . implode(', ', $failedBreakdowns);
@@ -822,17 +830,17 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             return null;
         }
 
+        $tz = AnalyticsTime::appTimeZone();
+
         try {
-            return (new \DateTimeImmutable((string) $value, new \DateTimeZone(Craft::$app->getTimeZone())))
-                ->setTimezone(new \DateTimeZone(Craft::$app->getTimeZone()))
-                ->format('Y-m-d');
+            return (new \DateTimeImmutable((string) $value, $tz))->setTimezone($tz)->format('Y-m-d');
         } catch (\Throwable) {
             return null;
         }
     }
 
     /**
-     * Returns a HogQL calendar-day expression in Craft's timezone.
+     * Returns a HogQL calendar-day expression in the system timezone.
      */
     private function _dayExpression(string $column): string
     {
@@ -840,7 +848,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
     }
 
     /**
-     * Returns a HogQL hour-of-day expression in Craft's timezone.
+     * Returns a HogQL hour-of-day expression in the system timezone.
      */
     private function _hourExpression(string $column): string
     {
@@ -848,11 +856,18 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
     }
 
     /**
-     * Escapes Craft's IANA timezone for a HogQL string literal.
+     * Escapes the system IANA timezone for a HogQL string literal.
+     *
+     * Deliberately {@see AnalyticsTime::appTimeZone()} and not Craft::$app->getTimeZone(): in a
+     * CP request the latter is the *viewing user's* personal zone
+     * ({@see \craft\base\ApplicationTrait::_setTimeZone()} is called with $useUserTz =
+     * $isCpRequest). Bucketing provider days by whoever happens to be looking would make the day
+     * labels disagree with the stored date keys, which are always in the system zone — and since
+     * Craft can run the queue inside a CP request, that mismatch reaches the mirror.
      */
     private function _hogqlTimeZone(): string
     {
-        return str_replace("'", "\\'", Craft::$app->getTimeZone());
+        return str_replace("'", "\\'", AnalyticsTime::appTimeZone()->getName());
     }
 
     /**

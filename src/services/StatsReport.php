@@ -4,9 +4,9 @@ namespace szenario\craftobservatory\services;
 
 use craft\base\Component;
 use szenario\craftobservatory\helpers\AnalyticsTime;
+use szenario\craftobservatory\Observatory;
 use szenario\craftobservatory\records\DailyStats;
 use szenario\craftobservatory\records\HourlyStats;
-use szenario\craftobservatory\Observatory;
 
 /**
  * Builds the daily-stats report consumed by the CP page and dashboard widget.
@@ -375,9 +375,10 @@ class StatsReport extends Component
      *    style metrics must not be served here (daily uniques don't sum to a range unique).
      *  - Each day contributes only its stored top-100, so head rankings are accurate while
      *    the deep tail is approximate.
-     *  - Days are the unit of granularity: the start/end timestamps are floored to local
-     *    dates, so a sub-day window still counts whole days. The CP UI only ever emits
-     *    day-aligned ranges, so this matches what callers ask for.
+     *  - Days are the unit of granularity in the mirror, so a window that begins mid-day takes
+     *    its leading partial day from the source live instead; counting that day's whole-day row
+     *    would include the hours before the window started. The trailing edge is today, which is
+     *    already served live over the clamped window.
      *
      * @param string[] $types
      * @return array<string,array<int,array{x:string,y:int}>>
@@ -412,13 +413,23 @@ class StatsReport extends Component
         $startDateStr = (new \DateTimeImmutable('@' . intdiv($startAt, 1000)))->setTimezone($tz)->format('Y-m-d');
         $endDateStr = (new \DateTimeImmutable('@' . intdiv($endAt, 1000)))->setTimezone($tz)->format('Y-m-d');
 
-        // acc[type][label] = summed count across closed days (+ today, merged below).
+        // A window starting mid-day (the rolling "24h" preset) cannot take its first day from the
+        // mirror: these rows are whole-day totals with no hour to slice by, so counting that day
+        // would silently add the hours before the window began. The mirror starts at the first
+        // day the window covers in full, and the leading remainder is fetched live below.
+        [$startDayStart] = AnalyticsTime::dayBounds($startDateStr, $tz);
+        $hasLeadingPartialDay = $startAt > $startDayStart;
+        $mirrorFromStr = $hasLeadingPartialDay
+            ? (new \DateTimeImmutable($startDateStr . ' 00:00:00', $tz))->modify('+1 day')->format('Y-m-d')
+            : $startDateStr;
+
+        // acc[type][label] = summed count across closed days (+ partial edges, merged below).
         $acc = array_fill_keys($mirrored, []);
 
         /** @var DailyStats[] $records */
         $records = DailyStats::find()
             ->where(['websiteId' => $websiteId])
-            ->andWhere(['>=', 'date', $startDateStr])
+            ->andWhere(['>=', 'date', $mirrorFromStr])
             ->andWhere(['<=', 'date', $endDateStr])
             ->andWhere(['<', 'date', $todayStr])
             ->all();
@@ -429,6 +440,18 @@ class StatsReport extends Component
                 continue;
             }
             $this->_accumulateBreakdowns($acc, $mirrored, $metrics);
+        }
+
+        // Merge the leading partial day live. Skipped when that day is today, which the branch
+        // below already covers over the same clamped window.
+        if ($hasLeadingPartialDay && $startDateStr < $todayStr) {
+            [, $leadingEnd] = AnalyticsTime::dayBounds($startDateStr, $tz);
+            $leadingEnd = min($leadingEnd, $endAt);
+
+            if ($leadingEnd > $startAt) {
+                $leading = $analytics->getBreakdowns($startAt, $leadingEnd, $mirrored, $cacheDuration);
+                $this->_accumulateBreakdowns($acc, $mirrored, $leading);
+            }
         }
 
         // Merge today live, but only when the range actually reaches today.
@@ -536,6 +559,13 @@ class StatsReport extends Component
                 ->all();
 
             foreach ($records as $record) {
+                // Rows are selected by date, so the first and last day of a window that starts or
+                // ends mid-day arrive whole. Unlike the daily mirror these carry an hour, so the
+                // hours outside the window can simply be dropped rather than re-fetched live.
+                if (!$this->_hourStartsWithin($record->date, (int) $record->hour, $startAt, $endAt, $tz)) {
+                    continue;
+                }
+
                 $addToBucket($record->date, (int) $record->pageviews, (int) $record->visitors, (int) $record->hour);
             }
         } else {
@@ -566,7 +596,7 @@ class StatsReport extends Component
                         if ($ts === '') {
                             continue;
                         }
-                        $hour = (int) (new \DateTimeImmutable($ts))->setTimezone($tz)->format('G');
+                        $hour = (int) (new \DateTimeImmutable($ts, $tz))->setTimezone($tz)->format('G');
                         $addToBucket($todayStr, (int) ($point['y'] ?? 0), $todaySessions[$hour] ?? 0, $hour);
                     }
                 } else {
@@ -586,6 +616,35 @@ class StatsReport extends Component
     }
 
     /**
+     * Whether a mirrored hourly row's bucket begins inside the window [$startAt, $endAt).
+     *
+     * The upper bound is exclusive: a bucket starting exactly at $endAt covers the hour *after*
+     * the window. A bucket straddling either edge is dropped rather than counted whole — an hour
+     * is the finest slice the mirror stores, so for a window that starts mid-hour this omits up
+     * to 59 minutes from the leading bar instead of inventing up to 59 that fall outside it.
+     * Totals and breakdowns don't inherit that rounding; they read the edges live at exact
+     * instants.
+     *
+     * The local wall-clock hour is resolved through the timezone rather than added to midnight as
+     * an offset, so hours on a DST transition day map to the instants they actually occurred at —
+     * on those days the nth local hour is not n hours after local midnight.
+     */
+    private function _hourStartsWithin(string $dateStr, int $hour, int $startAt, int $endAt, \DateTimeZone $tz): bool
+    {
+        $hourStart = (new \DateTimeImmutable(sprintf('%s %02d:00:00', $dateStr, $hour), $tz))
+            ->getTimestamp() * 1000;
+
+        return $hourStart >= $startAt && $hourStart < $endAt;
+    }
+
+    /**
+     * Indexes a live pageview/session series by local hour.
+     *
+     * The provider's timestamps arrive without an offset, so the constructor zone is load-bearing:
+     * defaulting it would parse them in PHP's default zone, which Craft sets to the *viewing
+     * user's* timezone on CP requests, and the resulting hour would then disagree with the
+     * mirrored rows beside it — which are always bucketed in the system zone.
+     *
      * @param array<int,array{x?:string,t?:string,y:int|string}> $series
      * @return array<int,int>
      */
@@ -597,7 +656,7 @@ class StatsReport extends Component
             if ($ts === '') {
                 continue;
             }
-            $hour = (int) (new \DateTimeImmutable($ts))->setTimezone($tz)->format('G');
+            $hour = (int) (new \DateTimeImmutable($ts, $tz))->setTimezone($tz)->format('G');
             $indexed[$hour] = (int) ($point['y'] ?? 0);
         }
 

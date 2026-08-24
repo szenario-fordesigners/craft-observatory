@@ -15,9 +15,26 @@ export function useWidgetData<T>(
   const loading = ref(false);
   const error = ref<Error | null>(null) as Ref<Error | null>;
   let abortController: AbortController | null = null;
+  let inFlight = false;
 
+  /**
+   * Fetches once, dropping the call if a previous one is still running.
+   *
+   * Every caller is either the initial mount or a poll tick, and the URL is fixed for the
+   * lifetime of the composable — there is never a newer request that should replace an older
+   * one. So an overlapping tick is dropped rather than raced.
+   *
+   * This used to abort the in-flight request and start a replacement. Any request slower than
+   * its poll interval was then aborted by the very next tick, indefinitely: nothing ever
+   * completed, so `data` never arrived, the `_syncing` flag the widgets gate their 5s poll on
+   * never cleared, and the loop kept itself alive while re-running the expensive query every
+   * 5s. Aborting also ran the dead request's `finally`, clearing `loading` while its
+   * replacement was still in flight.
+   */
   const refetch = async () => {
-    abortController?.abort();
+    if (inFlight) return;
+
+    inFlight = true;
     abortController = new AbortController();
     loading.value = true;
     error.value = null;
@@ -45,11 +62,14 @@ export function useWidgetData<T>(
       console.error(`Error fetching ${actionPath}`, e);
       error.value = e instanceof Error ? e : new Error(String(e));
     } finally {
+      inFlight = false;
       loading.value = false;
     }
   };
 
   onMounted(refetch);
+  // Teardown is the only thing the controller is for now: it stops a request that is still in
+  // flight when Craft removes the widget from settling into a torn-down component.
   onUnmounted(() => abortController?.abort());
 
   return { data, loading, error, refetch };

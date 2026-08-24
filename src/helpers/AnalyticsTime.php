@@ -22,6 +22,13 @@ class AnalyticsTime
     private const DAILY_MAX_DAYS = 365;
 
     /**
+     * A rolling day, in ms. Deliberately a fixed 24×3600s rather than "one calendar day ago":
+     * the "Last 24 hours" window means 24 hours even across a DST transition, where the local
+     * clock reads the same time 23 or 25 hours earlier.
+     */
+    private const ROLLING_DAY_MS = 24 * 3600 * 1000;
+
+    /**
      * The system timezone — the one every stored day key is bucketed in.
      *
      * Deliberately *not* Craft::$app->getTimeZone(): inside a CP request that resolves to the
@@ -75,14 +82,29 @@ class AnalyticsTime
      * session in another zone asked for a shifted window and then read the wrong day keys back
      * out of the mirror, which is bucketed in {@see self::appTimeZone()}.
      *
-     * @return array{startAt:int,endAt:int,unit:string}|null null if $preset is not a known preset
+     * @return array{startAt:int,endAt:int,unit:string,compareStartAt:int}|null null if $preset is not a known preset
      */
-    public static function presetRange(string $preset, ?\DateTimeZone $tz = null, ?\DateTimeImmutable $today = null): ?array
+    public static function presetRange(string $preset, ?\DateTimeZone $tz = null, ?\DateTimeImmutable $now = null): ?array
     {
         $tz = $tz ?? self::appTimeZone();
-        $today = $today !== null
-            ? $today->setTimezone($tz)->setTime(0, 0)
-            : new \DateTimeImmutable('today', $tz);
+        $now = $now !== null ? $now->setTimezone($tz) : new \DateTimeImmutable('now', $tz);
+        $today = $now->setTime(0, 0);
+
+        // The one rolling window: a true 24-hour span ending now. It used to select the pair of
+        // calendar days yesterday-midnight..tonight, which is 24 to 48 hours wide depending on
+        // the time of day — at noon, "Last 24 hours" showed 36. Being the only preset that is
+        // not day-aligned, it is also the reason the mirror has to clamp partial edge days
+        // ({@see \szenario\craftobservatory\services\StatsReport::getRangeBreakdowns()}).
+        if ($preset === '24h') {
+            $endAt = $now->getTimestamp() * 1000;
+
+            return [
+                'startAt' => $endAt - self::ROLLING_DAY_MS,
+                'endAt' => $endAt,
+                'unit' => 'hour',
+                'compareStartAt' => $endAt - 2 * self::ROLLING_DAY_MS,
+            ];
+        }
 
         // Month arithmetic runs from the 1st. Subtracting months from e.g. the 31st overflows
         // into the *following* month in PHP (Aug 31 minus 6 months lands on Mar 3), which would
@@ -90,19 +112,24 @@ class AnalyticsTime
         $monthStart = $today->modify('first day of this month');
         $weekStart = $today->modify('monday this week');
 
+        $yearStart = $today->setDate((int) $today->format('Y'), 1, 1);
+
+        // The fourth element is where the *previous* period starts. It is stepped back by one
+        // whole period in calendar units, not by the elapsed millisecond count, so the
+        // comparison lands at the same phase: "this week" on a Wednesday compares against the
+        // previous Mon–Wed, not against the Fri–Sun immediately before it. Deriving it here
+        // keeps it anchored to the same weekStart/monthStart the window itself uses — a second
+        // preset list elsewhere is exactly how these drift apart.
         $range = match ($preset) {
-            'today' => [$today, $today, 'hour'],
-            // Spans two calendar days, matching the window this preset has always produced —
-            // its "Last 24 hours" label has been inaccurate for as long as it has existed.
-            '24h' => [$today->modify('-1 day'), $today, 'hour'],
-            'this_week' => [$weekStart, $weekStart->modify('+6 days'), 'day'],
-            '7d' => [$today->modify('-6 days'), $today, 'day'],
-            'this_month' => [$monthStart, $monthStart->modify('last day of this month'), 'day'],
-            '30d' => [$today->modify('-29 days'), $today, 'day'],
-            '90d' => [$today->modify('-89 days'), $today, 'day'],
-            'this_year' => [$today->setDate((int) $today->format('Y'), 1, 1), $today, 'month'],
-            '6m' => [$monthStart->modify('-5 months'), $today, 'month'],
-            '12m' => [$monthStart->modify('-11 months'), $today, 'month'],
+            'today' => [$today, $today, 'hour', $today->modify('-1 day')],
+            'this_week' => [$weekStart, $weekStart->modify('+6 days'), 'day', $weekStart->modify('-7 days')],
+            '7d' => [$today->modify('-6 days'), $today, 'day', $today->modify('-13 days')],
+            'this_month' => [$monthStart, $monthStart->modify('last day of this month'), 'day', $monthStart->modify('-1 month')],
+            '30d' => [$today->modify('-29 days'), $today, 'day', $today->modify('-59 days')],
+            '90d' => [$today->modify('-89 days'), $today, 'day', $today->modify('-179 days')],
+            'this_year' => [$yearStart, $today, 'month', $yearStart->modify('-1 year')],
+            '6m' => [$monthStart->modify('-5 months'), $today, 'month', $monthStart->modify('-11 months')],
+            '12m' => [$monthStart->modify('-11 months'), $today, 'month', $monthStart->modify('-23 months')],
             default => null,
         };
 
@@ -110,9 +137,9 @@ class AnalyticsTime
             return null;
         }
 
-        [$start, $end, $unit] = $range;
+        [$start, $end, $unit, $compareStart] = $range;
 
-        return self::window($start, $end, $unit, $tz);
+        return self::window($start, $end, $unit, $tz, $compareStart);
     }
 
     /**
@@ -121,7 +148,7 @@ class AnalyticsTime
      * Both dates arrive straight off a query string, so they are validated rather than coerced:
      * anything that is not a real calendar date is rejected outright.
      *
-     * @return array{startAt:int,endAt:int,unit:string}|null null if either date is malformed
+     * @return array{startAt:int,endAt:int,unit:string,compareStartAt:int}|null null if either date is malformed
      */
     public static function customRange(string $startDate, string $endDate, ?\DateTimeZone $tz = null): ?array
     {
@@ -145,18 +172,29 @@ class AnalyticsTime
             default => 'month',
         };
 
-        return self::window($start, $end, $unit, $tz);
+        return self::window($start, $end, $unit, $tz, $start->modify("-{$days} days"));
     }
 
     /**
-     * @return array{startAt:int,endAt:int,unit:string}
+     * @return array{startAt:int,endAt:int,unit:string,compareStartAt:int}
      */
-    private static function window(\DateTimeImmutable $start, \DateTimeImmutable $end, string $unit, \DateTimeZone $tz): array
-    {
+    private static function window(
+        \DateTimeImmutable $start,
+        \DateTimeImmutable $end,
+        string $unit,
+        \DateTimeZone $tz,
+        \DateTimeImmutable $compareStart,
+    ): array {
         [$startAt] = self::dayBounds($start->format('Y-m-d'), $tz);
         [, $endAt] = self::dayBounds($end->format('Y-m-d'), $tz);
+        [$compareStartAt] = self::dayBounds($compareStart->format('Y-m-d'), $tz);
 
-        return ['startAt' => $startAt, 'endAt' => $endAt, 'unit' => $unit];
+        return [
+            'startAt' => $startAt,
+            'endAt' => $endAt,
+            'unit' => $unit,
+            'compareStartAt' => $compareStartAt,
+        ];
     }
 
     /**

@@ -128,6 +128,70 @@ class RangeResolutionTest extends TestCase
         }
     }
 
+    /**
+     * "Last 24 hours" used to run from yesterday's local midnight to tonight, so its width
+     * depended on the time of day — 36 hours at noon. It is a rolling window now.
+     */
+    public function testLast24HoursIsExactly24HoursWhateverTheTimeOfDay(): void
+    {
+        foreach (['00:00:00', '09:15:00', '12:00:00', '23:59:00'] as $time) {
+            $now = new \DateTimeImmutable("2026-08-13 {$time}", $this->berlin);
+            $range = AnalyticsTime::presetRange('24h', $this->berlin, $now);
+
+            $this->assertNotNull($range);
+            $this->assertSame(24 * 3600, intdiv($range['endAt'] - $range['startAt'], 1000), "span at {$time}");
+            $this->assertSame($now->getTimestamp() * 1000, $range['endAt'], "end at {$time}");
+        }
+    }
+
+    /**
+     * A rolling 24 hours must stay 24 hours across a DST transition, where "the same local time
+     * yesterday" is 23 or 25 hours ago. Guards against reaching for calendar arithmetic here.
+     */
+    public function testLast24HoursIgnoresDstShifts(): void
+    {
+        foreach (['2026-03-29 12:00:00', '2026-10-25 12:00:00'] as $instant) {
+            $range = AnalyticsTime::presetRange('24h', $this->berlin, new \DateTimeImmutable($instant, $this->berlin));
+
+            $this->assertNotNull($range);
+            $this->assertSame(24 * 3600, intdiv($range['endAt'] - $range['startAt'], 1000), "span at {$instant}");
+        }
+    }
+
+    /**
+     * The rolling window is the one preset that is deliberately not day-aligned, which is what
+     * obliges the mirror to clamp partial edge days.
+     */
+    public function testLast24HoursIsNotSnappedToMidnight(): void
+    {
+        $range = AnalyticsTime::presetRange(
+            '24h',
+            $this->berlin,
+            new \DateTimeImmutable('2026-08-13 12:00:00', $this->berlin),
+        );
+
+        $this->assertNotNull($range);
+        $this->assertSame('2026-08-12 12:00:00', $this->localTime($range['startAt'], $this->berlin));
+    }
+
+    /**
+     * Day-aligned presets must land on whole minutes, because the controller floors startAt to a
+     * 60-second cache bucket and that has to be a no-op for everything but the rolling window.
+     */
+    public function testDayAlignedPresetsStartOnAMinuteBoundary(): void
+    {
+        $dayAligned = ['today', 'this_week', '7d', 'this_month', '30d', '90d', 'this_year', '6m', '12m'];
+
+        foreach ($dayAligned as $preset) {
+            foreach ([$this->berlin, $this->kiritimati] as $tz) {
+                $range = AnalyticsTime::presetRange($preset, $tz, $this->dayIn('2026-08-13', $tz));
+
+                $this->assertNotNull($range);
+                $this->assertSame(0, $range['startAt'] % 60_000, "preset {$preset} startAt is not minute-aligned");
+            }
+        }
+    }
+
     public function testUnknownPresetIsRejected(): void
     {
         $this->assertNull(AnalyticsTime::presetRange('last_fortnight', $this->berlin));

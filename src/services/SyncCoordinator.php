@@ -467,15 +467,19 @@ class SyncCoordinator extends Component
                 $reason = $errors ? implode('; ', $errors) : 'empty stats response';
                 Craft::warning("fetchAndStoreDailyStats: failed for {$ds} — {$reason}", 'observatory');
             } elseif ($this->syncDailyStats($ds, $stats, $metrics)) {
-                // Totals landed → daily done. When stats are present, the only errors the
-                // batch reports are breakdown failures, so empty($errors) means breakdowns
-                // are complete.
+                // Pageviews and visitors landed, so the row is worth keeping and `daily` is done.
+                // Any remaining error means some *part* of the day is still incomplete — a failed
+                // breakdown, or a failed sessions query (which leaves visit duration at zero).
+                // Both are pinned on the `breakdowns` facet: it is the only retryable unit at
+                // this granularity, and retrying refetches the whole batch, so a later pass
+                // rewrites the duration too. Coarse, but it always converges — whereas treating
+                // an incomplete day as finished never does.
                 $this->_markFacet($websiteId, $ds, self::FACET_DAILY, true);
-                $breakdownsOk = empty($errors);
-                $this->_markFacet($websiteId, $ds, self::FACET_BREAKDOWNS, $breakdownsOk);
+                $dayComplete = empty($errors);
+                $this->_markFacet($websiteId, $ds, self::FACET_BREAKDOWNS, $dayComplete);
                 $synced++;
-                if (!$breakdownsOk) {
-                    Craft::warning("fetchAndStoreDailyStats: {$ds} totals saved; breakdowns incomplete (" . implode('; ', $errors) . ') — will retry.', 'observatory');
+                if (!$dayComplete) {
+                    Craft::warning("fetchAndStoreDailyStats: {$ds} totals saved; day incomplete (" . implode('; ', $errors) . ') — will retry.', 'observatory');
                 } else {
                     Craft::debug("fetchAndStoreDailyStats: saved {$ds}.", 'observatory');
                 }

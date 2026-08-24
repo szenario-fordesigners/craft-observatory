@@ -127,11 +127,10 @@ class DashboardController extends Controller
      */
     public function actionGetDashboardData(): ?Response
     {
-        $request = \Craft::$app->getRequest();
-        [$startAt, $endAt, $unit] = $this->resolveRange();
+        [$startAt, $endAt, $unit, $compareStartAt] = $this->resolveRange();
 
-        $includePageviews = (string) $request->getParam('includePageviews', '1') !== '0';
-        $includeStats = (string) $request->getParam('includeStats', '1') !== '0';
+        $includePageviews = $this->stringParam('includePageviews', '1') !== '0';
+        $includeStats = $this->stringParam('includeStats', '1') !== '0';
 
         \Craft::$app->getSession()->close();
         $plugin = Observatory::getInstance();
@@ -145,7 +144,7 @@ class DashboardController extends Controller
 
         return $this->asJson([
             'pageviews' => $includePageviews ? $plugin->stats->getRangePageviews($startAt, $endAt, $unit) : null,
-            'stats' => $includeStats ? $this->totalsWithComparison($startAt, $endAt) : null,
+            'stats' => $includeStats ? $this->totalsWithComparison($startAt, $endAt, $compareStartAt) : null,
             'metrics' => $metrics,
             '_syncing' => $freshness['_syncing'],
             'lastSyncedAt' => $freshness['lastSyncedAt'],
@@ -177,10 +176,10 @@ class DashboardController extends Controller
      */
     public function actionGetStats(): Response
     {
-        [$startAt, $endAt] = $this->resolveRange();
+        [$startAt, $endAt, , $compareStartAt] = $this->resolveRange();
 
         \Craft::$app->getSession()->close();
-        $stats = $this->totalsWithComparison($startAt, $endAt);
+        $stats = $this->totalsWithComparison($startAt, $endAt, $compareStartAt);
 
         if ($stats === null) {
             return $this->asJson([
@@ -257,16 +256,22 @@ class DashboardController extends Controller
 
         $closedDays = Observatory::EVENTS_CLOSED_DAYS;
 
+        // Dates come from AnalyticsTime, never date()/strtotime(): those read PHP's default
+        // zone, which Craft sets to the *viewing user's* personal timezone on CP requests. The
+        // stored `date` column is always in the system zone, so a user zone ahead of it would
+        // silently drop the first hours of the day out of the live half of these totals.
+        $todayStr = AnalyticsTime::dateOffset(0);
+
         $closedRows = DailyEvents::find()
             ->select(['eventName AS x', 'SUM(total) AS y'])
             ->where(['websiteId' => $websiteId])
-            ->andWhere(['>=', 'date', date('Y-m-d', strtotime("-{$closedDays} days"))])
-            ->andWhere(['<', 'date', date('Y-m-d')])
+            ->andWhere(['>=', 'date', AnalyticsTime::dateOffset($closedDays)])
+            ->andWhere(['<', 'date', $todayStr])
             ->groupBy('eventName')
             ->asArray()
             ->all();
 
-        $todayStart = strtotime('today') * 1000;
+        [$todayStart] = AnalyticsTime::dayBounds($todayStr);
         // Bucket "now" to the minute so the underlying getMetrics cache key is stable
         // for 60s — otherwise the per-second key bypasses caching entirely.
         $now = (int) (floor(time() / 60) * 60) * 1000;
@@ -325,17 +330,16 @@ class DashboardController extends Controller
      * comes back with the window for the same reason — the two are one decision, and splitting
      * them across the wire is what let them disagree.
      *
-     * @return array{0:int,1:int,2:string}
+     * @return array{0:int,1:int,2:string,3:int}
      */
     private function resolveRange(): array
     {
-        $request = \Craft::$app->getRequest();
-        $range = (string) $request->getParam('range', self::DEFAULT_RANGE);
+        $range = $this->stringParam('range', self::DEFAULT_RANGE);
 
         $resolved = $range === 'custom'
             ? AnalyticsTime::customRange(
-                (string) $request->getParam('startDate', ''),
-                (string) $request->getParam('endDate', ''),
+                $this->stringParam('startDate'),
+                $this->stringParam('endDate'),
             )
             : AnalyticsTime::presetRange($range);
 
@@ -345,14 +349,18 @@ class DashboardController extends Controller
         $resolved ??= AnalyticsTime::presetRange(self::DEFAULT_RANGE)
             ?? throw new \LogicException('The default range preset must resolve.');
 
-        // endAt is capped at a {@see self::RANGE_BUCKET_SECONDS}-second boundary so that
+        // Both ends are floored to a {@see self::RANGE_BUCKET_SECONDS}-second boundary so that
         // windows running up to "now" share a stable cache key within each bucket instead of
-        // producing a unique per-second key on every render. Presets whose endAt already lies
-        // in the past pass through untouched, so historical ranges are never truncated.
+        // producing a unique per-second key on every render. Presets whose endAt already lies in
+        // the past pass through untouched, so historical ranges are never truncated. Flooring
+        // startAt matters for the rolling "24h" window; day-aligned starts already sit on a
+        // minute boundary, and since the bucket divides evenly into 24h the rolling span stays
+        // exactly 24 hours instead of drifting by the current second.
         return [
-            $resolved['startAt'],
+            $this->bucketMs($resolved['startAt']),
             min($resolved['endAt'], $this->bucketMs(time() * 1000)),
             $resolved['unit'],
+            $this->bucketMs($resolved['compareStartAt']),
         ];
     }
 
@@ -365,7 +373,7 @@ class DashboardController extends Controller
      *
      * @return array<string,mixed>|null
      */
-    private function totalsWithComparison(int $startAt, int $endAt): ?array
+    private function totalsWithComparison(int $startAt, int $endAt, int $compareStartAt): ?array
     {
         $analytics = Observatory::getInstance()->analytics;
         $totals = $analytics->getTotals($startAt, $endAt);
@@ -374,26 +382,23 @@ class DashboardController extends Controller
             return null;
         }
 
-        [$priorStart, $priorEnd] = $this->comparisonRange($startAt, $endAt);
-        $comparison = $analytics->getTotals($priorStart, $priorEnd);
+        // The prior window covers the same elapsed span, one whole period earlier — the anchor
+        // comes from AnalyticsTime, which steps back in calendar units so the two windows sit at
+        // the same phase. Matching the elapsed span rather than the period's full length is what
+        // makes a period-to-date preset comparable: at 15:00 on Wednesday, "this week" weighs
+        // Mon–Wed against the previous Mon–Wed, not against a complete seven-day week.
+        //
+        // It deliberately is *not* the window immediately preceding this one. That is equal in
+        // length but wrong in phase: it made "today" compare this morning against yesterday
+        // evening, and "this week" compare Mon–Wed against Fri–Sun.
+        // Clamped to stay strictly before $startAt: getTotals() bounds are inclusive at both
+        // ends, and for the rolling "24h" preset the elapsed span equals the period exactly, so
+        // the prior window would otherwise end on the very instant this one begins and count the
+        // event there twice.
+        $elapsed = max(0, $endAt - $startAt);
+        $comparison = $analytics->getTotals($compareStartAt, min($compareStartAt + $elapsed, $startAt - 1));
 
         return $comparison !== null ? $totals + ['comparison' => $comparison] : $totals;
-    }
-
-    /**
-     * The equal-length window immediately preceding [$startAt, $endAt].
-     *
-     * Trends are only meaningful like-for-like, so the prior window spans exactly as long as
-     * the requested one. It ends 1ms before $startAt because getTotals() bounds are inclusive
-     * on both ends — sharing the boundary instant would count it in both windows.
-     *
-     * @return array{0:int,1:int}
-     */
-    private function comparisonRange(int $startAt, int $endAt): array
-    {
-        $length = max(0, $endAt - $startAt);
-
-        return [$startAt - $length - 1, $startAt - 1];
     }
 
     /**
@@ -470,6 +475,21 @@ class DashboardController extends Controller
             $closedDayOffsets[1],
             array_values(array_unique($facets)),
         );
+    }
+
+    /**
+     * Reads a request param that is expected to be a string.
+     *
+     * Query strings can carry arrays (`?range[]=x`), and casting one with `(string)` raises an
+     * "Array to string conversion" — which Craft escalates to an exception in dev mode, turning a
+     * malformed param into a 500 rather than the documented fallback. Anything that is not a
+     * string is simply not the param we were given.
+     */
+    private function stringParam(string $name, string $default = ''): string
+    {
+        $value = \Craft::$app->getRequest()->getParam($name, $default);
+
+        return \is_string($value) ? $value : $default;
     }
 
     /**
