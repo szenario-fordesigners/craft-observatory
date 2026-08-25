@@ -11,7 +11,6 @@ use szenario\craftobservatory\jobs\SyncDailyStatsJob;
 use szenario\craftobservatory\jobs\SyncRecentDaysJob;
 use szenario\craftobservatory\Observatory;
 use szenario\craftobservatory\records\DailyStats;
-use szenario\craftobservatory\records\HourlyStats;
 use szenario\craftobservatory\records\SyncState;
 
 /**
@@ -530,8 +529,9 @@ class SyncCoordinator extends Component
      * Fetches hourly pageviews and persists them, tracking the `hourly` facet.
      *
      * A day whose fetch errored is omitted by the source (key absent) → facet failed,
-     * retried later. A present day with no rows is a real zero-traffic day → facet done,
-     * no DB write. Days already done/exhausted for `hourly` are skipped up front.
+     * retried later. A present day with no rows is a real zero-traffic day → facet done;
+     * syncHourlyStats() still runs so any stale hours from a previous sync are deleted.
+     * Days already done/exhausted for `hourly` are skipped up front.
      *
      * @param array<int,array{date:string,startAt:int,endAt:int}> $daySpecs
      * @param callable|null $onProgress fn(int $done, int $total): void — called after each day.
@@ -567,12 +567,11 @@ class SyncCoordinator extends Component
                 // Fetch errored for this day — retry on a later pass.
                 $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, false);
                 $failed++;
-            } elseif (empty($hourlyBatch[$ds])) {
-                // Real zero-traffic day — nothing to store, but the facet is done.
-                $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, true);
             } elseif ($this->syncHourlyStats($ds, $hourlyBatch[$ds])) {
                 $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, true);
-                $synced++;
+                if (!empty($hourlyBatch[$ds])) {
+                    $synced++;
+                }
             } else {
                 $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, false);
                 $failed++;
@@ -773,7 +772,12 @@ class SyncCoordinator extends Component
     }
 
     /**
-     * Upserts hourly visitor/pageview rows for a single date.
+     * Replaces the observatory_hourly_stats rows for a single date with the given hourly rows.
+     *
+     * Runs in a transaction so the day's rows are never partially updated. Delete before insert
+     * (mirroring {@see self::syncDailyEvents}) is what makes a forced resync that now returns
+     * fewer, or zero, hours than a previous sync actually remove the stale ones — an upsert-only
+     * write would leave hours the provider stopped reporting sitting in the mirror forever.
      *
      * @param string $date Date in 'Y-m-d' format.
      * @param array<int,array{hour:int,visitors:int,pageviews:int}> $hourlyRows
@@ -787,35 +791,49 @@ class SyncCoordinator extends Component
             return false;
         }
 
-        foreach ($hourlyRows as $row) {
-            $hour = (int) $row['hour'];
+        $db = Craft::$app->getDb();
+        $transaction = $db->beginTransaction();
 
-            $record = HourlyStats::findOne([
-                'websiteId' => $websiteId,
-                'date' => $date,
-                'hour' => $hour,
-            ]);
+        try {
+            $db->createCommand()
+                ->delete('{{%observatory_hourly_stats}}', [
+                    'websiteId' => $websiteId,
+                    'date' => $date,
+                ])
+                ->execute();
 
-            if (!$record) {
-                $record = new HourlyStats();
-                $record->websiteId = $websiteId;
-                $record->date = $date;
-                $record->hour = $hour;
+            $rows = [];
+            $now = Db::prepareDateForDb(new \DateTime());
+            foreach ($hourlyRows as $row) {
+                $rows[] = [
+                    $websiteId,
+                    $date,
+                    (int) $row['hour'],
+                    (int) $row['visitors'],
+                    (int) $row['pageviews'],
+                    $now,
+                    $now,
+                    StringHelper::UUID(),
+                ];
             }
 
-            $record->visitors = (int) $row['visitors'];
-            $record->pageviews = (int) $row['pageviews'];
-
-            if (!$record->save()) {
-                Craft::error(
-                    "Failed to save hourly stats for {$date} hour {$hour}: " . json_encode($record->getErrors()),
-                    __METHOD__
-                );
-                return false;
+            if (!empty($rows)) {
+                $db->createCommand()
+                    ->batchInsert(
+                        '{{%observatory_hourly_stats}}',
+                        ['websiteId', 'date', 'hour', 'visitors', 'pageviews', 'dateCreated', 'dateUpdated', 'uid'],
+                        $rows
+                    )
+                    ->execute();
             }
+
+            $transaction->commit();
+            return true;
+        } catch (\Throwable $e) {
+            $transaction->rollBack();
+            Craft::error("Failed to sync hourly stats for {$date}: {$e->getMessage()}", __METHOD__);
+            return false;
         }
-
-        return true;
     }
 
     /**
