@@ -68,6 +68,15 @@ class SyncRecentDaysJob extends BaseJob
                 ", elapsed={$elapsed}s.",
                 'observatory'
             );
+
+            // fetchAndStore*() swallow per-day failures into these counts rather than throwing, so
+            // a broken connection would otherwise log "failed=N" forever while every job still
+            // reports success. Throw so Craft's queue marks the job failed and it actually shows
+            // up in the Queue Manager.
+            $failed = $daily['failed'] + $hourly['failed'] + $events['failed'];
+            if ($failed > 0) {
+                throw new \RuntimeException("SyncRecentDaysJob: {$failed} day-facet fetch(es) failed — see the Observatory logs.");
+            }
         } catch (AnalyticsRateLimitedException $e) {
             $rateLimited = true;
             $plugin->sync->deferAutoSync($this->websiteId, $e->retryAfterSeconds);

@@ -5,6 +5,7 @@ namespace szenario\craftobservatory\widgets;
 use Craft;
 use craft\base\Widget;
 use szenario\craftobservatory\assetbundles\craftobservatorywidget\CraftObservatoryWidgetAsset;
+use szenario\craftobservatory\Observatory;
 
 class ObservatoryVisitorsWidget extends Widget
 {
@@ -15,7 +16,7 @@ class ObservatoryVisitorsWidget extends Widget
 
     public static function isSelectable(): bool
     {
-        return true;
+        return Observatory::getInstance()->userCanAccessCp();
     }
 
     public static function icon(): ?string

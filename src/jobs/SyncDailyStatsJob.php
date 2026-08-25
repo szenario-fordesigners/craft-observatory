@@ -78,6 +78,15 @@ class SyncDailyStatsJob extends BaseJob
                 "hourly(synced={$hourly['synced']}, failed={$hourly['failed']}), elapsed={$elapsed}s.",
                 'observatory'
             );
+
+            // fetchAndStoreDailyStats()/fetchAndStoreHourlyStats() swallow per-day failures into
+            // these counts rather than throwing, so a broken connection (e.g. revoked credentials)
+            // would otherwise log "failed=N" forever while every job still reports success. Throw
+            // so Craft's queue marks the job failed and it actually shows up in the Queue Manager.
+            $failed = $daily['failed'] + $hourly['failed'];
+            if ($failed > 0) {
+                throw new \RuntimeException("SyncDailyStatsJob: {$failed} day-facet fetch(es) failed — see the Observatory logs.");
+            }
         } catch (AnalyticsRateLimitedException $e) {
             $rateLimited = true;
             $plugin->sync->deferAutoSync($this->websiteId, $e->retryAfterSeconds);

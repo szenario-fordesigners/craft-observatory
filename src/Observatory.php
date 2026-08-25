@@ -84,6 +84,20 @@ class Observatory extends Plugin
         });
     }
 
+    /**
+     * Whether the signed-in user can access this plugin's CP section/data.
+     *
+     * Gates dashboard widget selectability with the same permission
+     * {@see \szenario\craftobservatory\controllers\DashboardController::beforeAction()}
+     * requires for every action it serves — without this, a user could add an Observatory
+     * widget to their dashboard without the permission to use it, leaving it stuck
+     * permanently 403ing on every AJAX call its JS makes.
+     */
+    public function userCanAccessCp(): bool
+    {
+        return Craft::$app->getUser()->checkPermission('accessPlugin-' . $this->id);
+    }
+
     protected function createSettingsModel(): ?Model
     {
         return Craft::createObject(Settings::class);

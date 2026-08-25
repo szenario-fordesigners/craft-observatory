@@ -23,6 +23,14 @@ class ObservatoryCountriesWidget extends Widget
     /**
      * @inheritdoc
      */
+    public static function isSelectable(): bool
+    {
+        return Observatory::getInstance()->userCanAccessCp();
+    }
+
+    /**
+     * @inheritdoc
+     */
     public static function icon(): ?string
     {
         return 'flag';

@@ -4,6 +4,7 @@ namespace szenario\craftobservatory\widgets;
 
 use craft\base\Widget;
 use szenario\craftobservatory\assetbundles\craftobservatorywidget\CraftObservatoryWidgetAsset;
+use szenario\craftobservatory\Observatory;
 use Craft;
 
 /**
@@ -17,6 +18,14 @@ class ObservatoryDevicesWidget extends Widget
     public static function displayName(): string
     {
         return 'Observatory Top Devices';
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public static function isSelectable(): bool
+    {
+        return Observatory::getInstance()->userCanAccessCp();
     }
 
     /**

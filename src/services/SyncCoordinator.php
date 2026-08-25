@@ -393,8 +393,14 @@ class SyncCoordinator extends Component
     /**
      * Records the outcome of a facet fetch for a day. Success marks it done; failure flips
      * it to failed and bumps the attempt count (which the retry budget caps).
+     *
+     * Returns whether the state row itself was actually persisted. Callers that mark a facet
+     * done after a successful fetch must treat a false return as a failure of that day too:
+     * if this write doesn't land, the day looks perpetually unattempted next pass and the
+     * fetch (which did succeed) gets silently redone — worth surfacing rather than reporting
+     * the day as cleanly synced when the bookkeeping for it never actually committed.
      */
-    private function _markFacet(string $websiteId, string $date, string $facet, bool $success): void
+    private function _markFacet(string $websiteId, string $date, string $facet, bool $success): bool
     {
         $state = SyncState::findOne([
             'websiteId' => $websiteId,
@@ -419,7 +425,10 @@ class SyncCoordinator extends Component
 
         if (!$state->save()) {
             Craft::error("Failed to save sync state for {$date}/{$facet}: " . json_encode($state->getErrors()), __METHOD__);
+            return false;
         }
+
+        return true;
     }
 
     /**
@@ -482,10 +491,14 @@ class SyncCoordinator extends Component
                 // this granularity, and retrying refetches the whole batch, so a later pass
                 // rewrites the duration too. Coarse, but it always converges — whereas treating
                 // an incomplete day as finished never does.
-                $this->_markFacet($websiteId, $ds, self::FACET_DAILY, true);
+                $dailyMarked = $this->_markFacet($websiteId, $ds, self::FACET_DAILY, true);
                 $dayComplete = empty($errors);
                 $this->_markFacet($websiteId, $ds, self::FACET_BREAKDOWNS, $dayComplete);
-                $synced++;
+                if ($dailyMarked) {
+                    $synced++;
+                } else {
+                    $failed++;
+                }
                 if (!$dayComplete) {
                     Craft::warning("fetchAndStoreDailyStats: {$ds} totals saved; day incomplete (" . implode('; ', $errors) . ') — will retry.', 'observatory');
                 } else {
@@ -577,9 +590,12 @@ class SyncCoordinator extends Component
                 $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, false);
                 $failed++;
             } elseif ($this->syncHourlyStats($ds, $hourlyBatch[$ds])) {
-                $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, true);
-                if (!empty($hourlyBatch[$ds])) {
-                    $synced++;
+                if ($this->_markFacet($websiteId, $ds, self::FACET_HOURLY, true)) {
+                    if (!empty($hourlyBatch[$ds])) {
+                        $synced++;
+                    }
+                } else {
+                    $failed++;
                 }
             } else {
                 $this->_markFacet($websiteId, $ds, self::FACET_HOURLY, false);
@@ -635,8 +651,11 @@ class SyncCoordinator extends Component
                 continue;
             }
             if ($this->syncDailyEvents($ds, $eventsBatch[$ds])) {
-                $this->_markFacet($websiteId, $ds, self::FACET_EVENTS, true);
-                $synced++;
+                if ($this->_markFacet($websiteId, $ds, self::FACET_EVENTS, true)) {
+                    $synced++;
+                } else {
+                    $failed++;
+                }
             } else {
                 $this->_markFacet($websiteId, $ds, self::FACET_EVENTS, false);
                 $failed++;
@@ -714,6 +733,21 @@ class SyncCoordinator extends Component
     }
 
     /**
+     * Whether an event from the analytics source has the shape syncDailyEvents() needs.
+     *
+     * The source is upstream and untyped, so a missing/wrong-typed x or y must be filtered
+     * out here rather than left to throw a NOT NULL/type error, which would roll back the
+     * whole day's otherwise-valid events (the batch insert is one transaction).
+     */
+    private static function _isValidEvent(mixed $event): bool
+    {
+        return \is_array($event)
+            && isset($event['x'], $event['y'])
+            && \is_string($event['x'])
+            && \is_numeric($event['y']);
+    }
+
+    /**
      * Replaces the observatory_daily_events rows for a single date with the given top-events list.
      *
      * Runs in a transaction so the day's rows are never partially updated. The delete
@@ -746,6 +780,9 @@ class SyncCoordinator extends Component
             $rows = [];
             $now = Db::prepareDateForDb(new \DateTime());
             foreach ($events as $event) {
+                if (!self::_isValidEvent($event)) {
+                    continue;
+                }
                 $name = $event['x'];
                 if ($name === '') {
                     continue;
