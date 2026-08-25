@@ -127,12 +127,18 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
         }
 
         $sessionTotals = $this->_getSessionTotals($startAt, $endAt, $cacheDuration);
+        // A failed sessions query must fail the whole call, not fall back to a bare 0 duration —
+        // that would be indistinguishable from a real zero-duration window (see the identical
+        // convention just above, where a failed primary query already returns null wholesale).
+        if ($sessionTotals === null) {
+            return null;
+        }
 
         return [
             'pageviews' => (int) $this->_cell($row, 0, 'pageviews'),
             'visitors' => (int) $this->_cell($row, 1, 'visitors'),
-            'visits' => $sessionTotals['visits'] ?? (int) $this->_cell($row, 2, 'visits'),
-            'sessionDurationSeconds' => $sessionTotals['sessionDurationSeconds'] ?? 0,
+            'visits' => $sessionTotals['visits'],
+            'sessionDurationSeconds' => $sessionTotals['sessionDurationSeconds'],
         ];
     }
 
@@ -361,8 +367,12 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
         [$startAt, $endAt, $dates] = $range;
         $day = $this->_dayExpression('timestamp');
         $hour = $this->_hourExpression('timestamp');
+        // count(DISTINCT distinct_id), matching what "visitors" means everywhere else in this
+        // class (getTotals(), getPageviews()) — a distinct-session count belongs under a
+        // "sessions" key, not "visitors", and storing the wrong one here previously mislabeled
+        // every synced HourlyStats row.
         $rows = $this->_cachedQuery(sprintf(
-            "SELECT %s AS day, %s AS hour, count() AS pageviews, count(DISTINCT properties.\$session_id) AS sessions FROM events WHERE event = '\$pageview' AND timestamp >= %s AND timestamp <= %s GROUP BY day, hour ORDER BY day ASC, hour ASC",
+            "SELECT %s AS day, %s AS hour, count() AS pageviews, count(DISTINCT distinct_id) AS visitors FROM events WHERE event = '\$pageview' AND timestamp >= %s AND timestamp <= %s GROUP BY day, hour ORDER BY day ASC, hour ASC",
             $day,
             $hour,
             $this->_toDateTime($startAt),
@@ -380,7 +390,7 @@ class PostHogAnalyticsSource extends Component implements AnalyticsSourceInterfa
             }
             $results[$date][] = [
                 'hour' => (int) $this->_cell($row, 1, 'hour'),
-                'visitors' => (int) $this->_cell($row, 3, 'sessions'),
+                'visitors' => (int) $this->_cell($row, 3, 'visitors'),
                 'pageviews' => (int) $this->_cell($row, 2, 'pageviews'),
             ];
         }
