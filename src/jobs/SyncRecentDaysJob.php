@@ -12,10 +12,12 @@ use szenario\craftobservatory\Observatory;
  * Observatory::EVENTS_CLOSED_DAYS closed days, which together with today (handled live)
  * make up the dashboard's "last week".
  *
- * Each day is fetched exactly once: a day with a DailyStats row is skipped entirely.
- * Unlike the older backfill, the recent window also fetches events, since the events
- * widget only ever shows this window. Bounded at a handful of days, so it never
- * approaches a job timeout; older days are handled in chunks by {@see SyncDailyStatsJob}.
+ * A day/facet is considered done — and skipped — once
+ * {@see \szenario\craftobservatory\services\SyncCoordinator} records its
+ * {@see \szenario\craftobservatory\records\SyncState} row as done. Unlike the older
+ * backfill, the recent window also fetches events, since the events widget only ever
+ * shows this window. Bounded at a handful of days, so it never approaches a job timeout;
+ * older days are handled in chunks by {@see SyncDailyStatsJob}.
  */
 class SyncRecentDaysJob extends BaseJob
 {

@@ -25,4 +25,17 @@ class DailyEvents extends ActiveRecord
     {
         return '{{%observatory_daily_events}}';
     }
+
+    /**
+     * @inheritdoc
+     */
+    public function rules(): array
+    {
+        return [
+            [['websiteId', 'date', 'eventName'], 'required'],
+            [['websiteId', 'eventName'], 'string', 'max' => 255],
+            [['date'], 'date', 'format' => 'php:Y-m-d'],
+            [['total'], 'integer', 'min' => 0],
+        ];
+    }
 }

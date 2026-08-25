@@ -19,13 +19,15 @@ class MirrorHourClampTest extends TestCase
     private \DateTimeZone $tz;
     private StatsReport $stats;
     private \ReflectionMethod $hourStartsWithin;
+    private \ReflectionMethod $leadingPartialHourBounds;
 
     protected function setUp(): void
     {
         $this->tz = new \DateTimeZone('Europe/Berlin');
-        // _hourStartsWithin() is pure, so the service constructor (and Craft::$app) can be skipped.
+        // Both methods under test are pure, so the service constructor (and Craft::$app) can be skipped.
         $this->stats = (new \ReflectionClass(StatsReport::class))->newInstanceWithoutConstructor();
         $this->hourStartsWithin = new \ReflectionMethod(StatsReport::class, '_hourStartsWithin');
+        $this->leadingPartialHourBounds = new \ReflectionMethod(StatsReport::class, '_leadingPartialHourBounds');
     }
 
     public function testRollingWindowKeepsExactlyTwentyFourHourlyBuckets(): void
@@ -83,6 +85,69 @@ class MirrorHourClampTest extends TestCase
             $this->assertTrue($this->within('2026-08-11', $hour, $custom), "custom day 1 hour {$hour}");
             $this->assertTrue($this->within('2026-08-12', $hour, $custom), "custom day 2 hour {$hour}");
         }
+    }
+
+    /**
+     * A window starting mid-hour on a closed day must fetch that dropped hour live: the
+     * bounds returned are exactly [startAt, that hour's end), not the whole hour.
+     */
+    public function testLeadingPartialHourIsFetchedLiveWhenWindowStartsMidHour(): void
+    {
+        $startAt = $this->tsMs('2026-08-12 12:34:00');
+        $endAt = $this->tsMs('2026-08-13 12:34:00');
+
+        $bounds = $this->leadingPartialHourBounds->invoke($this->stats, '2026-08-12', '2026-08-13', $startAt, $endAt, $this->tz);
+
+        $this->assertSame(12, $bounds['hour']);
+        $this->assertSame($startAt, $bounds['start']);
+        $this->assertSame($this->tsMs('2026-08-12 13:00:00'), $bounds['end']);
+    }
+
+    /**
+     * A window starting exactly on an hour boundary drops nothing — no compensation needed.
+     */
+    public function testNoLeadingPartialHourWhenWindowStartsOnTheHour(): void
+    {
+        $startAt = $this->tsMs('2026-08-12 12:00:00');
+        $endAt = $this->tsMs('2026-08-13 12:00:00');
+
+        $bounds = $this->leadingPartialHourBounds->invoke($this->stats, '2026-08-12', '2026-08-13', $startAt, $endAt, $this->tz);
+
+        $this->assertNull($bounds);
+    }
+
+    /**
+     * When the leading hour falls on today, the "fold today live" branch in
+     * getRangePageviews() already covers it from the true startAt — compensating here too
+     * would double-count it.
+     */
+    public function testNoLeadingPartialHourWhenTheLeadingHourIsToday(): void
+    {
+        $startAt = $this->tsMs('2026-08-13 08:15:00');
+        $endAt = $this->tsMs('2026-08-13 12:00:00');
+
+        $bounds = $this->leadingPartialHourBounds->invoke($this->stats, '2026-08-13', '2026-08-13', $startAt, $endAt, $this->tz);
+
+        $this->assertNull($bounds);
+    }
+
+    /**
+     * A window that ends before the dropped hour would even finish must clamp to the
+     * window's own end, not run past it.
+     */
+    public function testLeadingPartialHourEndClampsToTheWindowEnd(): void
+    {
+        $startAt = $this->tsMs('2026-08-12 12:34:00');
+        $endAt = $this->tsMs('2026-08-12 12:40:00');
+
+        $bounds = $this->leadingPartialHourBounds->invoke($this->stats, '2026-08-12', '2026-08-13', $startAt, $endAt, $this->tz);
+
+        $this->assertSame($endAt, $bounds['end']);
+    }
+
+    private function tsMs(string $time): int
+    {
+        return (new \DateTimeImmutable($time, $this->tz))->getTimestamp() * 1000;
     }
 
     /**

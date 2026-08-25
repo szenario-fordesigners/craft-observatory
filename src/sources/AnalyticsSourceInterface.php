@@ -73,6 +73,13 @@ interface AnalyticsSourceInterface
     /**
      * Returns multiple breakdowns keyed by requested type.
      *
+     * Error signal: a type whose query errored is omitted from the returned map; a type
+     * present with an empty array is a successful query that found no rows. Callers that
+     * just render read `$result[$type] ?? []` and degrade gracefully; {@see \szenario\craftobservatory\services\SyncCoordinator}
+     * uses the present/absent distinction to tell a complete result from a failed one, so
+     * it can retry the failure instead of freezing it as done. An implementation that
+     * returns `[]` for both "no data" and "error" would silently defeat that retry logic.
+     *
      * @param string[] $types
      * @return array<string,array<int,array{x:string,y:int}>>
      *
@@ -83,6 +90,10 @@ interface AnalyticsSourceInterface
 
     /**
      * Fetches daily totals and breakdowns for many closed days.
+     *
+     * Every requested date is always present as a key, unlike the batch methods below —
+     * per-day failure is signalled through `stats: null` and/or a non-empty `errors` list
+     * on that date's entry instead of the key being absent.
      *
      * @param array<int,array{date:string,startAt:int,endAt:int}> $days
      * @param string[] $breakdownTypes
@@ -96,6 +107,12 @@ interface AnalyticsSourceInterface
     /**
      * Fetches hourly visitor/pageview counts for many closed days.
      *
+     * Error signal: a date whose fetch errored is omitted from the returned map, so
+     * {@see \szenario\craftobservatory\services\SyncCoordinator} can tell "fetch failed,
+     * retry later" apart from "fetch succeeded, day genuinely has zero traffic" (present
+     * with an empty array). An implementation that returns `[]` for both would make a
+     * provider outage look like a permanently synced zero-traffic day.
+     *
      * @param array<int,array{date:string,startAt:int,endAt:int}> $days
      * @return array<string,array<int,array{hour:int,visitors:int,pageviews:int}>>
      *
@@ -106,6 +123,10 @@ interface AnalyticsSourceInterface
 
     /**
      * Fetches top custom events for many closed days.
+     *
+     * Same present/absent-key contract as {@see self::getHourlyPageviewsBatch()}: an
+     * omitted date means the fetch failed and should be retried, not that the day had
+     * no events.
      *
      * @param array<int,array{date:string,startAt:int,endAt:int}> $days
      * @return array<string,array<int,array{x:string,y:int}>>

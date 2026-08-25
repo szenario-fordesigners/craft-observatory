@@ -2,10 +2,10 @@
 
 namespace szenario\craftobservatory\widgets;
 
+use Craft;
 use craft\base\Widget;
 use szenario\craftobservatory\assetbundles\craftobservatorywidget\CraftObservatoryWidgetAsset;
 use szenario\craftobservatory\Observatory;
-use Craft;
 
 /**
  * Top Countries Widget

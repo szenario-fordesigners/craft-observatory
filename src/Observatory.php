@@ -14,8 +14,15 @@ use szenario\craftobservatory\models\Settings;
 use szenario\craftobservatory\services\Analytics;
 use szenario\craftobservatory\services\StatsReport;
 use szenario\craftobservatory\services\SyncCoordinator;
+use szenario\craftobservatory\widgets\ObservatoryCountriesWidget;
+use szenario\craftobservatory\widgets\ObservatoryDevicesWidget;
+use szenario\craftobservatory\widgets\ObservatoryEventsWidget;
 use szenario\craftobservatory\widgets\ObservatoryHeatmapWidget;
+use szenario\craftobservatory\widgets\ObservatoryLiveVisitorsWidget;
+use szenario\craftobservatory\widgets\ObservatoryReferrersWidget;
+use szenario\craftobservatory\widgets\ObservatoryUsageWidget;
 use szenario\craftobservatory\widgets\ObservatoryVisitorsWidget;
+use szenario\craftobservatory\widgets\ObservatoryWorldMapWidget;
 use yii\base\Event;
 
 /**
@@ -79,7 +86,7 @@ class Observatory extends Plugin
 
         // Any code that creates an element query or loads Twig should be deferred until
         // after Craft is fully initialized, to avoid conflicts with other plugins/modules
-        Craft::$app->onInit(function () {
+        Craft::$app->onInit(function() {
             // ...
         });
     }
@@ -139,16 +146,16 @@ class Observatory extends Plugin
     {
         // Register event handlers here ...
         // (see https://craftcms.com/docs/5.x/extend/events.html to get started)
-        Event::on(Dashboard::class, Dashboard::EVENT_REGISTER_WIDGET_TYPES, function (RegisterComponentTypesEvent $event) {
+        Event::on(Dashboard::class, Dashboard::EVENT_REGISTER_WIDGET_TYPES, function(RegisterComponentTypesEvent $event) {
             $event->types[] = ObservatoryVisitorsWidget::class;
             $event->types[] = ObservatoryHeatmapWidget::class;
-            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryWorldMapWidget::class;
-            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryReferrersWidget::class;
-            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryCountriesWidget::class;
-            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryDevicesWidget::class;
-            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryEventsWidget::class;
-            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryLiveVisitorsWidget::class;
-            $event->types[] = \szenario\craftobservatory\widgets\ObservatoryUsageWidget::class;
+            $event->types[] = ObservatoryWorldMapWidget::class;
+            $event->types[] = ObservatoryReferrersWidget::class;
+            $event->types[] = ObservatoryCountriesWidget::class;
+            $event->types[] = ObservatoryDevicesWidget::class;
+            $event->types[] = ObservatoryEventsWidget::class;
+            $event->types[] = ObservatoryLiveVisitorsWidget::class;
+            $event->types[] = ObservatoryUsageWidget::class;
         });
     }
 }

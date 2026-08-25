@@ -28,4 +28,18 @@ class DailyStats extends ActiveRecord
     {
         return '{{%observatory_daily_stats}}';
     }
+
+    /**
+     * @inheritdoc
+     */
+    public function rules(): array
+    {
+        return [
+            [['websiteId', 'date'], 'required'],
+            [['websiteId'], 'string', 'max' => 255],
+            [['date'], 'date', 'format' => 'php:Y-m-d'],
+            [['pageviews', 'visitors', 'visits', 'sessionDurationSeconds'], 'integer', 'min' => 0],
+            [['metrics'], 'string'],
+        ];
+    }
 }

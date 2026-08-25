@@ -21,4 +21,18 @@ class HourlyStats extends ActiveRecord
     {
         return '{{%observatory_hourly_stats}}';
     }
+
+    /**
+     * @inheritdoc
+     */
+    public function rules(): array
+    {
+        return [
+            [['websiteId', 'date'], 'required'],
+            [['websiteId'], 'string', 'max' => 255],
+            [['date'], 'date', 'format' => 'php:Y-m-d'],
+            [['hour'], 'integer', 'min' => 0, 'max' => 23],
+            [['visitors', 'pageviews'], 'integer', 'min' => 0],
+        ];
+    }
 }

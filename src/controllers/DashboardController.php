@@ -169,7 +169,9 @@ class DashboardController extends Controller
         $plugin->sync->autoSyncMissingDays();
         $pageviews = $plugin->stats->getRangePageviews($startAt, $endAt, $unit);
 
-        return $this->asJson($pageviews);
+        return $this->asJson(($pageviews ?? []) + [
+            '_status' => $plugin->analytics->getStatus(),
+        ]);
     }
     /**
      * Get statistics (visitors, visits, pageviews, etc) for the dashboard widget via AJAX.
@@ -220,7 +222,10 @@ class DashboardController extends Controller
                 return $this->asFailure('Invalid metric type(s)', ['error' => 'Invalid metric type(s)']);
             }
 
-            return $this->asJson($plugin->stats->getRangeBreakdowns($types, $startAt, $endAt));
+            return $this->asJson([
+                'data' => $plugin->stats->getRangeBreakdowns($types, $startAt, $endAt),
+                '_status' => $plugin->analytics->getStatus(),
+            ]);
         }
 
         $types = $this->normalizeMetricTypes([(string) $typeParam]);

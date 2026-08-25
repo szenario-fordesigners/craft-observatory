@@ -30,7 +30,9 @@ class ObservatoryHeatmapWidget extends Widget
 
         return Craft::$app->getView()->renderTemplate('observatory/_widget-shell', [
             'widgetName' => 'heatmap',
-            'props' => [],
+            'props' => [
+                'locale' => Craft::$app->getLocale()->id,
+            ],
         ]);
     }
 }

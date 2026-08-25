@@ -3,6 +3,7 @@
 namespace szenario\craftobservatory\records;
 
 use craft\db\ActiveRecord;
+use szenario\craftobservatory\services\SyncCoordinator;
 
 /**
  * Per-day, per-facet sync state.
@@ -31,5 +32,20 @@ class SyncState extends ActiveRecord
     public static function tableName(): string
     {
         return '{{%observatory_sync_state}}';
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function rules(): array
+    {
+        return [
+            [['websiteId', 'date', 'facet', 'status'], 'required'],
+            [['websiteId'], 'string', 'max' => 255],
+            [['date'], 'date', 'format' => 'php:Y-m-d'],
+            [['facet'], 'in', 'range' => SyncCoordinator::allFacets()],
+            [['status'], 'in', 'range' => [SyncCoordinator::STATUS_DONE, SyncCoordinator::STATUS_FAILED]],
+            [['attempts'], 'integer', 'min' => 0],
+        ];
     }
 }

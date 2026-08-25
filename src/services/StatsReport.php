@@ -82,7 +82,7 @@ class StatsReport extends Component
 
         $syncing = false;
         $daily = array_reverse(array_map(
-            static function (array $row) use (&$syncing): array {
+            static function(array $row) use (&$syncing): array {
                 $queued = $row['source'] === 'Queued';
                 if ($queued) {
                     $syncing = true;
@@ -171,7 +171,7 @@ class StatsReport extends Component
 
         $syncing = false;
         $daily = array_reverse(array_map(
-            static function (array $row) use (&$syncing): array {
+            static function(array $row) use (&$syncing): array {
                 $queued = $row['source'] === 'Queued';
                 if ($queued) {
                     $syncing = true;
@@ -603,7 +603,7 @@ class StatsReport extends Component
         // ('Y-m-d H:00:00', 'Y-m-d', or 'Y-m'), so ksort gives the series in order.
         $pv = [];
         $ss = [];
-        $addToBucket = static function (string $dateStr, int $pageviews, int $sessions, ?int $hour = null) use (&$pv, &$ss, $unit): void {
+        $addToBucket = static function(string $dateStr, int $pageviews, int $sessions, ?int $hour = null) use (&$pv, &$ss, $unit): void {
             if ($unit === 'month') {
                 $key = substr($dateStr, 0, 7);
                 $ts = $key . '-01 00:00:00';
@@ -656,6 +656,22 @@ class StatsReport extends Component
             }
         }
 
+        // Leading partial hour: _hourStartsWithin() drops the mirrored bucket for the hour
+        // containing $startAt whenever the window starts mid-hour, since an hour is the finest
+        // slice the mirror stores. Fetch that one hour live instead of leaving it uncounted —
+        // mirroring how getRangeBreakdowns() covers a leading partial *day* the same way.
+        if ($unit === 'hour') {
+            $leadingBounds = $this->_leadingPartialHourBounds($startDateStr, $todayStr, $startAt, $endAt, $tz);
+            if ($leadingBounds !== null) {
+                $leading = $analytics->getPageviews($leadingBounds['start'], $leadingBounds['end'], 'hour');
+                $leadingPv = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $leading['pageviews'] ?? []));
+                $leadingSs = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $leading['sessions'] ?? []));
+                if ($leadingPv > 0 || $leadingSs > 0) {
+                    $addToBucket($startDateStr, $leadingPv, $leadingSs, $leadingBounds['hour']);
+                }
+            }
+        }
+
         // Fold today live into its bucket(s).
         if ($endDateStr >= $todayStr) {
             [$todayStart] = AnalyticsTime::dayBounds($todayStr);
@@ -694,10 +710,10 @@ class StatsReport extends Component
      *
      * The upper bound is exclusive: a bucket starting exactly at $endAt covers the hour *after*
      * the window. A bucket straddling either edge is dropped rather than counted whole — an hour
-     * is the finest slice the mirror stores, so for a window that starts mid-hour this omits up
-     * to 59 minutes from the leading bar instead of inventing up to 59 that fall outside it.
-     * Totals and breakdowns don't inherit that rounding; they read the edges live at exact
-     * instants.
+     * is the finest slice the mirror stores, so a window starting mid-hour would otherwise be
+     * missing up to 59 minutes from the leading bar. getRangePageviews() compensates for the
+     * leading edge by fetching that one dropped hour live; the trailing edge needs no equivalent
+     * since $endAt is exclusive and mirrored rows only exist for closed (whole) hours.
      *
      * The local wall-clock hour is resolved through the timezone rather than added to midnight as
      * an offset, so hours on a DST transition day map to the instants they actually occurred at —
@@ -709,6 +725,38 @@ class StatsReport extends Component
             ->getTimestamp() * 1000;
 
         return $hourStart >= $startAt && $hourStart < $endAt;
+    }
+
+    /**
+     * Bounds of the mirrored hourly bucket that {@see self::_hourStartsWithin()} drops when a
+     * window starts mid-hour on a closed day, or null when no live compensation is needed.
+     *
+     * Null covers two cases: the window starts exactly on an hour boundary (nothing was dropped),
+     * or the leading hour falls on today — the "fold today live" branch in getRangePageviews()
+     * already covers that one from the true $startAt, so compensating here too would double-count it.
+     *
+     * @return array{hour:int,start:int,end:int}|null
+     */
+    private function _leadingPartialHourBounds(string $startDateStr, string $todayStr, int $startAt, int $endAt, \DateTimeZone $tz): ?array
+    {
+        if ($startDateStr >= $todayStr) {
+            return null;
+        }
+
+        $hour = (int) (new \DateTimeImmutable('@' . intdiv($startAt, 1000)))->setTimezone($tz)->format('G');
+        $hourStart = (new \DateTimeImmutable(sprintf('%s %02d:00:00', $startDateStr, $hour), $tz))
+            ->getTimestamp() * 1000;
+
+        if ($hourStart >= $startAt) {
+            return null;
+        }
+
+        $hourEnd = min($endAt, $hourStart + 3600 * 1000);
+        if ($hourEnd <= $startAt) {
+            return null;
+        }
+
+        return ['hour' => $hour, 'start' => $startAt, 'end' => $hourEnd];
     }
 
     /**

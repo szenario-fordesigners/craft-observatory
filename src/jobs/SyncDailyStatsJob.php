@@ -13,10 +13,11 @@ use szenario\craftobservatory\services\SyncCoordinator;
  *
  * One job covers the closed range of day offsets [startOffset, endOffset]. The
  * coordinator splits a large window into BATCH_SIZE-day chunks and queues them all up
- * front, so no single job processes enough days to risk a queue timeout. Each day is
- * fetched exactly once — days that already have a DailyStats row are skipped — so
- * re-running a chunk is a cheap no-op once its days are present. Events are not fetched
- * here; the events widget only covers the recent window handled by {@see SyncRecentDaysJob}.
+ * front, so no single job processes enough days to risk a queue timeout. A day/facet is
+ * considered done — and skipped — once {@see SyncCoordinator} records its
+ * {@see \szenario\craftobservatory\records\SyncState} row as done, so re-running a chunk
+ * is a cheap no-op once its days are recorded. Events are not fetched here; the events
+ * widget only covers the recent window handled by {@see SyncRecentDaysJob}.
  */
 class SyncDailyStatsJob extends BaseJob
 {

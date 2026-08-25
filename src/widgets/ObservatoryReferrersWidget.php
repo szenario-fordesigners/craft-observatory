@@ -2,6 +2,7 @@
 
 namespace szenario\craftobservatory\widgets;
 
+use Craft;
 use craft\base\Widget;
 use szenario\craftobservatory\assetbundles\craftobservatorywidget\CraftObservatoryWidgetAsset;
 use szenario\craftobservatory\Observatory;
@@ -48,9 +49,9 @@ class ObservatoryReferrersWidget extends Widget
      */
     public function getBodyHtml(): ?string
     {
-        \Craft::$app->getView()->registerAssetBundle(CraftObservatoryWidgetAsset::class);
+        Craft::$app->getView()->registerAssetBundle(CraftObservatoryWidgetAsset::class);
 
-        return \Craft::$app->getView()->renderTemplate('observatory/_widget-shell', [
+        return Craft::$app->getView()->renderTemplate('observatory/_widget-shell', [
             'widgetName' => 'referrers',
             'props' => [],
         ]);
