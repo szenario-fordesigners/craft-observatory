@@ -643,7 +643,10 @@ class SyncCoordinator extends Component
      *
      * @param string $date Date in 'Y-m-d' format.
      * @param array $stats Raw stats array from the API.
-     * @param array $metrics Optional metrics keyed by type. Empty input preserves existing metrics on update.
+     * @param array $metrics Optional metrics keyed by type. Merged onto any existing stored
+     *   metrics rather than replacing them wholesale, since a breakdowns retry can succeed on a
+     *   different subset of types than an earlier attempt (see the breakdowns-facet retry note
+     *   above) — a plain overwrite would silently delete previously-successful dimensions.
      */
     public function syncDailyStats(string $date, array $stats, array $metrics = []): bool
     {
@@ -671,7 +674,7 @@ class SyncCoordinator extends Component
         $record->sessionDurationSeconds = (int) ($stats['sessionDurationSeconds'] ?? 0);
 
         if (!empty($metrics)) {
-            $record->metrics = json_encode($metrics);
+            $record->metrics = self::_mergeMetrics($record->metrics, $metrics);
         }
 
         if (!$record->save()) {
@@ -680,6 +683,26 @@ class SyncCoordinator extends Component
         }
 
         return true;
+    }
+
+    /**
+     * Merges freshly-fetched breakdown metrics onto whatever is already stored for the day.
+     *
+     * A breakdowns retry can succeed on a different subset of types than an earlier attempt
+     * (see the breakdowns-facet retry note on {@see self::syncDailyStats}), so this must merge
+     * rather than replace — otherwise a later partial success would delete earlier ones.
+     */
+    private static function _mergeMetrics(?string $existingJson, array $newMetrics): string
+    {
+        $existing = [];
+        if ($existingJson !== null) {
+            $decoded = json_decode($existingJson, true);
+            if (is_array($decoded)) {
+                $existing = $decoded;
+            }
+        }
+
+        return json_encode(array_merge($existing, $newMetrics));
     }
 
     /**
