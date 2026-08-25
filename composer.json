@@ -1,5 +1,6 @@
 {
 	"name": "szenario/craft-observatory",
+	"description": "PostHog analytics, native to the Craft CMS control panel.",
 	"type": "craft-plugin",
 	"license": "proprietary",
 	"support": {

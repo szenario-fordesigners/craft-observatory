@@ -7,6 +7,7 @@ use szenario\craftobservatory\helpers\AnalyticsTime;
 use szenario\craftobservatory\Observatory;
 use szenario\craftobservatory\records\DailyStats;
 use szenario\craftobservatory\records\HourlyStats;
+use szenario\craftobservatory\records\SyncState;
 
 /**
  * Builds the daily-stats report consumed by the CP page and dashboard widget.
@@ -223,7 +224,14 @@ class StatsReport extends Component
      * Aggregates hourly visitor data from the local DB into a 7×24 heatmap grid.
      *
      * Returns one cell per observed (weekday, hour) combination over the lookback window.
-     * weekday: 0=Monday … 6=Sunday. Visitors value is the average across all matching days.
+     * weekday: 0=Monday … 6=Sunday. The value is the mean visitors across every *observed*
+     * occurrence of that weekday — not across the occurrences that happened to have traffic.
+     *
+     * That distinction is the whole correctness of this widget. The mirror stores no row for an
+     * hour with no visitors, so dividing by the number of rows found would divide by "Mondays
+     * where 09:00 was busy" instead of "Mondays observed": a slot busy on one Monday out of
+     * thirteen would render exactly as hot as one busy every Monday, which inverts what a
+     * traffic-pattern heatmap is for.
      *
      * @return array{cells:array<int,array{weekday:int,hour:int,visitors:float}>,maxVisitors:float,daysWithData:int}
      */
@@ -249,28 +257,33 @@ class StatsReport extends Component
             return $empty;
         }
 
-        // Aggregate: sum visitors and count occurrences per (weekday, hour) cell.
+        $observedPerWeekday = $this->_observedDaysPerWeekday($websiteId, $startDate, $rows);
+
+        // Sum visitors per (weekday, hour) cell. The divisor comes from the observed-day tally
+        // above, never from how many rows landed in the cell.
         $aggregates = [];
-        $uniqueDates = [];
         foreach ($rows as $row) {
-            $dt = new \DateTimeImmutable($row->date);
-            // DateTimeImmutable::format('N') → 1=Mon … 7=Sun; subtract 1 for 0-based Mon=0.
-            $weekday = (int) $dt->format('N') - 1;
+            $weekday = self::_weekdayOf($row->date);
             $hour = (int) $row->hour;
             $key = "{$weekday}:{$hour}";
 
             if (!isset($aggregates[$key])) {
-                $aggregates[$key] = ['weekday' => $weekday, 'hour' => $hour, 'sum' => 0, 'count' => 0];
+                $aggregates[$key] = ['weekday' => $weekday, 'hour' => $hour, 'sum' => 0];
             }
             $aggregates[$key]['sum'] += $row->visitors;
-            $aggregates[$key]['count']++;
-            $uniqueDates[$row->date] = true;
         }
 
         $cells = [];
         $maxVisitors = 0.0;
         foreach ($aggregates as $agg) {
-            $avg = $agg['count'] > 0 ? round($agg['sum'] / $agg['count'], 1) : 0.0;
+            $days = $observedPerWeekday[$agg['weekday']] ?? 0;
+            if ($days < 1) {
+                // Unreachable while the tally includes every date that produced a row, which it
+                // does — belt and braces against a divide-by-zero if that ever stops holding.
+                continue;
+            }
+
+            $avg = round($agg['sum'] / $days, 1);
             $cells[] = ['weekday' => $agg['weekday'], 'hour' => $agg['hour'], 'visitors' => $avg];
             if ($avg > $maxVisitors) {
                 $maxVisitors = $avg;
@@ -280,8 +293,69 @@ class StatsReport extends Component
         return [
             'cells' => $cells,
             'maxVisitors' => $maxVisitors,
-            'daysWithData' => \count($uniqueDates),
+            'daysWithData' => array_sum($observedPerWeekday),
         ];
+    }
+
+    /**
+     * Counts, per weekday, how many days in the window were actually fetched.
+     *
+     * A day whose `hourly` facet is done was queried, so an hour with no row for it genuinely had
+     * no visitors and must still weigh on that slot's mean. Dates that produced rows are unioned
+     * in, so a mirror where rows exist without a matching done facet still yields a usable
+     * divisor rather than dropping the cell.
+     *
+     * @param HourlyStats[] $rows
+     * @return array<int,int> weekday (0=Mon … 6=Sun) => observed day count
+     */
+    private function _observedDaysPerWeekday(string $websiteId, string $startDate, array $rows): array
+    {
+        $fetched = SyncState::find()
+            ->select(['date'])
+            ->where([
+                'websiteId' => $websiteId,
+                'facet' => SyncCoordinator::FACET_HOURLY,
+                'status' => SyncCoordinator::STATUS_DONE,
+            ])
+            ->andWhere(['>=', 'date', $startDate])
+            ->column();
+
+        $observed = [];
+        foreach ($fetched as $date) {
+            $observed[(string) $date] = true;
+        }
+        foreach ($rows as $row) {
+            $observed[$row->date] = true;
+        }
+
+        return self::_weekdayTally(array_keys($observed));
+    }
+
+    /**
+     * Tallies Y-m-d dates by weekday — the divisor each heatmap column is averaged over.
+     *
+     * @param string[] $dates
+     * @return array<int,int> weekday (0=Mon … 6=Sun) => count
+     */
+    private static function _weekdayTally(array $dates): array
+    {
+        $perWeekday = array_fill(0, 7, 0);
+        foreach ($dates as $date) {
+            $perWeekday[self::_weekdayOf($date)]++;
+        }
+
+        return $perWeekday;
+    }
+
+    /**
+     * Weekday of a Y-m-d date, 0=Monday … 6=Sunday.
+     *
+     * No timezone is needed: a date-only string is midnight in whatever zone it is read in, so
+     * the calendar day — and therefore the weekday — is the same either way.
+     */
+    private static function _weekdayOf(string $date): int
+    {
+        return (int) (new \DateTimeImmutable($date))->format('N') - 1;
     }
 
     /**
