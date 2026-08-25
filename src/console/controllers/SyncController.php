@@ -51,7 +51,7 @@ class SyncController extends Controller
             return ExitCode::CONFIG;
         }
 
-        $days = max(1, $days);
+        $days = min(SyncCoordinator::MAX_SYNC_DAYS, max(1, $days));
 
         if ($this->force) {
             $forgotten = $plugin->sync->forgetSyncState($websiteId, 1, $days);

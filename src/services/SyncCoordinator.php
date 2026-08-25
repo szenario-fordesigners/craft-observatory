@@ -48,16 +48,25 @@ class SyncCoordinator extends Component
     public const SYNC_MAX_ATTEMPTS = 3;
 
     /**
+     * Upper bound on how many days back a single call will queue coverage for. Backstops every
+     * caller of {@see self::autoSyncMissingDays()} — an unbounded `days` from a request param or
+     * CLI arg would otherwise drive an unbounded number of backfill chunks in _backfillChunks().
+     */
+    public const MAX_SYNC_DAYS = 366;
+
+    /**
      * Queues a background job to sync any historical days missing from the local DB.
      * Render-path cost: cache checks, one indexed query for MAX(dateUpdated), and at most one queue insert.
      * Today is always skipped — it's still accumulating and handled by the live widget queries.
      *
-     * @param int $days How many days back to check (excluding today).
+     * @param int $days How many days back to check (excluding today), capped at {@see self::MAX_SYNC_DAYS}.
      * @param int $throttleSeconds Minimum seconds between sync attempts.
      * @return bool True if a job was queued, false if throttled or already pending.
      */
     public function autoSyncMissingDays(int $days = 30, int $throttleSeconds = 300): bool
     {
+        $days = min(self::MAX_SYNC_DAYS, max(1, $days));
+
         $websiteId = Observatory::getInstance()->analytics->getStorageKey();
 
         if (empty($websiteId)) {

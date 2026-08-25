@@ -46,12 +46,14 @@ class DashboardController extends Controller
 
     /**
      * Returns a 7×24 heatmap of average visitor counts by weekday and hour of day.
-     * Accepts an optional `days` query param (default 90) controlling the lookback window.
+     * Accepts an optional `days` query param (default 90, capped at
+     * {@see self::MAX_CP_FRESHNESS_DAYS}) controlling the lookback window — uncapped, this
+     * request-supplied value would drive an unbounded number of queued backfill jobs.
      */
     public function actionGetHeatmapData(): Response
     {
         $request = \Craft::$app->getRequest();
-        $days = max(1, (int) $request->getParam('days', 90));
+        $days = min(self::MAX_CP_FRESHNESS_DAYS, max(1, (int) $request->getParam('days', 90)));
 
         \Craft::$app->getSession()->close();
 
