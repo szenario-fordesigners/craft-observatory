@@ -1,3 +1,4 @@
+import './shared/styles.css';
 import './assets/tailwind.css';
 import './assets/main.scss';
 

@@ -15,17 +15,8 @@
 }
 
 #observatory-wrapper {
-  // The shared observatory palette lives in shared/styles.css, which is only
-  // imported by the widget bundle (widget.ts). The CP bundle (cp.ts) doesn't
-  // load it, so components that reference these vars — e.g. CountryMap's
-  // color-mix() fills — would resolve to an invalid color and fall back to
-  // black. Define them here so the CP matches the widget theme. These mirror
-  // the values in shared/styles.css and the Tailwind @theme tokens in
-  // tailwind.css (--color-observatory-*).
-  --observatory-bg: #eeebb0;
-  --observatory-fg: #72715a;
-  --observatory-bar-bottom: #d8d6ab;
-
+  // The observatory palette and the shared transition classes come from
+  // shared/styles.css, which cp.ts imports.
   font-family: 'Arial', sans-serif;
   color: var(--observatory-fg);
 }
