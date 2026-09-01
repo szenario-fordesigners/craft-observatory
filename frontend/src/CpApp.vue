@@ -245,7 +245,15 @@ watch(
     if (syncing) {
       fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
       if (!dashboardPollTimer) {
-        dashboardPollTimer = setInterval(() => fetchDashboardData(true, false), 5000);
+        // Skip a tick rather than aborting the in-flight request: a query slower than the
+        // 5s interval (most likely exactly while a backfill is running server-side) would
+        // otherwise be cancelled by every following tick forever, so its response — the
+        // one that would clear `_syncing` — never arrives. `dashboardAbortController` is
+        // non-null for exactly as long as the current call is still the latest one, so
+        // this also leaves the abort-and-replace behavior for range changes untouched.
+        dashboardPollTimer = setInterval(() => {
+          if (!dashboardAbortController) fetchDashboardData(true, false);
+        }, 5000);
       }
     } else {
       stopDashboardPolling();
@@ -264,6 +272,7 @@ interface HeatmapData {
 const heatmapData = ref<HeatmapData | null>(null);
 const heatmapLoading = ref(false);
 let heatmapPollTimer: ReturnType<typeof setInterval> | null = null;
+let heatmapInFlight = false;
 
 const heatmapFreshnessMessage = computed(() =>
   heatmapData.value?._syncing
@@ -282,7 +291,16 @@ const stopHeatmapPolling = () => {
   }
 };
 
+// Dropped, not raced, the same way useWidgetData.ts's refetch() is: the URL never
+// changes between calls, so there's never a newer request that should replace an older
+// one — only the poll timer and the initial mount ever call this. Without the guard,
+// a response slower than the 5s poll interval let requests pile up with unbounded
+// concurrency, and an older response landing after a newer one could silently overwrite
+// it (even flipping `_syncing` back to true after it had already cleared).
 const fetchHeatmapData = async (showLoading = true) => {
+  if (heatmapInFlight) return;
+
+  heatmapInFlight = true;
   if (showLoading) {
     heatmapLoading.value = true;
   }
@@ -297,6 +315,7 @@ const fetchHeatmapData = async (showLoading = true) => {
   } catch (e) {
     console.error('Error fetching heatmap data', e);
   } finally {
+    heatmapInFlight = false;
     heatmapLoading.value = false;
   }
 };
