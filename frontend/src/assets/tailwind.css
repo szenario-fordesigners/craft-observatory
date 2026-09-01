@@ -1,5 +1,5 @@
 @import 'tailwindcss/theme.css';
-@import 'tailwindcss/preflight.css';
+@import './preflight-scoped.css';
 @import 'tailwindcss/utilities.css';
 
 @theme {
