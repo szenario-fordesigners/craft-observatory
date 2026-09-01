@@ -58,8 +58,18 @@ class Observatory extends Plugin
      * must never be mirror-served (see StatsReport::getRangeBreakdowns()).
      */
     public const MIRRORED_METRIC_TYPES = [
-        'url', 'title', 'entry', 'exit', 'referrer', 'channel',
-        'browser', 'os', 'device', 'country', 'region', 'city',
+        'url',
+        'title',
+        'entry',
+        'exit',
+        'referrer',
+        'channel',
+        'browser',
+        'os',
+        'device',
+        'country',
+        'region',
+        'city',
     ];
 
     public string $schemaVersion = '1.0.0';
@@ -124,7 +134,7 @@ class Observatory extends Plugin
         $targets = $log->targets;
 
         foreach ($targets as $target) {
-            if ($target instanceof MonologTarget && $target->name === 'observatory') {
+            if ($target instanceof MonologTarget && $target->getName() === 'observatory') {
                 return;
             }
         }

@@ -290,8 +290,12 @@ class DashboardController extends Controller
         }
         // Defensive: /metrics is upstream and untyped, so skip rows whose shape
         // doesn't match {x: string, y: numeric}. A nested object or missing key
-        // would otherwise silently corrupt totals via PHP's loose casts.
+        // would otherwise silently corrupt totals via PHP's loose casts. PHPStan
+        // trusts getBreakdown()'s PHPDoc'd return shape as guaranteed and flags this
+        // whole check as dead code, but that shape isn't runtime-enforced against the
+        // actual upstream response — this check is what makes it true.
         foreach ($todayRows as $row) {
+            // @phpstan-ignore-next-line booleanNot.alwaysFalse, isset.offset, booleanOr.alwaysFalse
             if (!\is_array($row) || !isset($row['x'], $row['y']) || !\is_string($row['x']) || !\is_numeric($row['y'])) {
                 continue;
             }

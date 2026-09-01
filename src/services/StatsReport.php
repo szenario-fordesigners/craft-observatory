@@ -376,6 +376,7 @@ class StatsReport extends Component
         // Pre-fetch all available DB records for the requested timeframe
         $startDateStr = AnalyticsTime::dateOffset($days - 1);
 
+        /** @var array<string,DailyStats> $dbRecords */
         $dbRecords = DailyStats::find()
             ->where(['websiteId' => $websiteId])
             ->andWhere(['>=', 'date', $startDateStr])
@@ -660,11 +661,18 @@ class StatsReport extends Component
         // containing $startAt whenever the window starts mid-hour, since an hour is the finest
         // slice the mirror stores. Fetch that one hour live instead of leaving it uncounted —
         // mirroring how getRangeBreakdowns() covers a leading partial *day* the same way.
+        //
+        // Below, every `?? 0` / `?? []` on a getPageviews() point guards against the live
+        // provider's actual response not honoring the interface's PHPDoc'd shape — PHPStan
+        // trusts that PHPDoc as certain and flags these as redundant, but the values come
+        // over the wire, not from our own type system.
         if ($unit === 'hour') {
             $leadingBounds = $this->_leadingPartialHourBounds($startDateStr, $todayStr, $startAt, $endAt, $tz);
             if ($leadingBounds !== null) {
                 $leading = $analytics->getPageviews($leadingBounds['start'], $leadingBounds['end'], 'hour');
+                // @phpstan-ignore-next-line nullCoalesce.offset
                 $leadingPv = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $leading['pageviews'] ?? []));
+                // @phpstan-ignore-next-line nullCoalesce.offset
                 $leadingSs = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $leading['sessions'] ?? []));
                 if ($leadingPv > 0 || $leadingSs > 0) {
                     $addToBucket($startDateStr, $leadingPv, $leadingSs, $leadingBounds['hour']);
@@ -682,15 +690,19 @@ class StatsReport extends Component
                 if ($unit === 'hour') {
                     $todaySessions = $this->_seriesByHour($today['sessions'] ?? [], $tz);
                     foreach ($today['pageviews'] ?? [] as $point) {
+                        // @phpstan-ignore-next-line nullCoalesce.offset
                         $ts = (string) ($point['t'] ?? $point['x'] ?? '');
                         if ($ts === '') {
                             continue;
                         }
                         $hour = (int) (new \DateTimeImmutable($ts, $tz))->setTimezone($tz)->format('G');
+                        // @phpstan-ignore-next-line nullCoalesce.offset
                         $addToBucket($todayStr, (int) ($point['y'] ?? 0), $todaySessions[$hour] ?? 0, $hour);
                     }
                 } else {
+                    // @phpstan-ignore-next-line nullCoalesce.offset
                     $todayPv = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $today['pageviews'] ?? []));
+                    // @phpstan-ignore-next-line nullCoalesce.offset
                     $todaySs = array_sum(array_map(static fn($p) => (int) ($p['y'] ?? 0), $today['sessions'] ?? []));
                     if ($todayPv > 0 || $todaySs > 0) {
                         $addToBucket($todayStr, $todayPv, $todaySs);
@@ -779,6 +791,7 @@ class StatsReport extends Component
                 continue;
             }
             $hour = (int) (new \DateTimeImmutable($ts, $tz))->setTimezone($tz)->format('G');
+            // @phpstan-ignore-next-line nullCoalesce.offset
             $indexed[$hour] = (int) ($point['y'] ?? 0);
         }
 
