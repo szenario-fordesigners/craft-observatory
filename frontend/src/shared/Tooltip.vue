@@ -3,7 +3,14 @@ defineProps<{ text: string }>();
 </script>
 
 <template>
-  <div class="observatory-tooltip-host">
+  <!-- tabindex + aria-label make the value reachable without a mouse: the wrapped
+       content (a heatmap cell, a bar) is otherwise a plain non-focusable div, so
+       :focus-within below never triggered and the value had no non-visual equivalent. -->
+  <div
+    class="observatory-tooltip-host"
+    :tabindex="text ? 0 : undefined"
+    :aria-label="text || undefined"
+  >
     <slot />
     <span v-if="text" class="observatory-tooltip-host__bubble" role="tooltip">{{ text }}</span>
   </div>

@@ -21,14 +21,25 @@ const emit = defineEmits<{
 const isOpen = ref(false);
 const customStartDate = ref(props.customRange.startDate);
 const customEndDate = ref(props.customRange.endDate);
+const triggerRef = ref<HTMLButtonElement | null>(null);
 
 const toggleDropdown = () => {
   isOpen.value = !isOpen.value;
 };
 
+// Closes the dropdown and returns focus to its trigger. Without this, closing via
+// keyboard (selecting a preset, applying a custom range, or pressing Escape) removed
+// the activated element from the DOM and left focus on <body>, forcing a keyboard or
+// screen-reader user to tab in again from the top of the page.
+const closeDropdown = () => {
+  if (!isOpen.value) return;
+  isOpen.value = false;
+  triggerRef.value?.focus();
+};
+
 const selectRange = (value: RangeValue) => {
   emit('update:modelValue', value);
-  isOpen.value = false;
+  closeDropdown();
 };
 
 const applyCustomRange = () => {
@@ -41,7 +52,7 @@ const applyCustomRange = () => {
 
   emit('update:customRange', { startDate, endDate });
   emit('update:modelValue', 'custom');
-  isOpen.value = false;
+  closeDropdown();
 };
 
 const getLabel = (val: string) => {
@@ -69,12 +80,20 @@ const handleClickOutside = (e: MouseEvent) => {
   }
 };
 
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && isOpen.value) {
+    closeDropdown();
+  }
+};
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside);
+  document.addEventListener('keydown', handleKeydown);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
+  document.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
@@ -82,8 +101,11 @@ onUnmounted(() => {
   <div class="relative inline-block text-left" ref="dropdownRef">
     <div>
       <button
+        ref="triggerRef"
         type="button"
         @click="toggleDropdown"
+        aria-haspopup="true"
+        :aria-expanded="isOpen"
         class="inline-flex w-full justify-center rounded-[0.7rem] border border-observatory-fg/30 bg-observatory-bg px-4 py-2 text-sm font-medium text-observatory-fg hover:bg-observatory-fg/[0.08] focus:outline-none"
       >
         {{ getLabel(modelValue) }}
