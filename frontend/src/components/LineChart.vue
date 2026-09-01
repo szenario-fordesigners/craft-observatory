@@ -21,6 +21,22 @@ onMounted(() => {
     if (resolved) lineColor.value = resolved;
 });
 
+// The backend emits bucket timestamps as naive "YYYY-MM-DD[ HH:MM:SS]" wall-clock
+// strings already computed in the site's configured timezone (see StatsReport /
+// PostHogAnalyticsSource). `new Date(str)` would re-interpret that string relative to
+// the *viewer's* browser timezone instead, shifting points to the wrong hour/day for
+// any viewer whose browser timezone differs from the site's — and can fail to parse
+// entirely on engines that reject the non-ISO space-separated form. Parsing the
+// components ourselves and building the Date from local numeric parts (same pattern
+// as `formatDay()` in Usage.vue/Visitors.vue) pins the displayed wall-clock time to
+// what the backend intended, independent of the browser's own timezone.
+const parseWallClock = (value: string): number => {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}):(\d{2}))?/);
+    if (!match) return NaN;
+    const [, y, mo, d, h, mi, s] = match;
+    return new Date(Number(y), Number(mo) - 1, Number(d), Number(h ?? 0), Number(mi ?? 0), Number(s ?? 0)).getTime();
+};
+
 const chartData = computed<DataRecord[]>(() => {
     if (!props.pageviews || !props.pageviews.pageviews) {
         return [];
@@ -28,7 +44,7 @@ const chartData = computed<DataRecord[]>(() => {
 
     // Unovis expects x to be a number (e.g., timestamp) for time scales
     return props.pageviews.pageviews.map((pv: { t?: string; x?: string; y: number | string }) => ({
-        x: new Date(pv.t || pv.x || '').getTime(),
+        x: parseWallClock(pv.t || pv.x || ''),
         y: Number(pv.y)
     })).filter((d: DataRecord) => !isNaN(d.x) && !isNaN(d.y));
 });
