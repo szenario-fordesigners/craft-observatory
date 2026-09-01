@@ -14,6 +14,12 @@
   --color-observatory-bar: #d8d6ab;
   --font-observatory: 'Arial', sans-serif;
 
+  /* Reuses the widgets' own skeleton-loading pulse (observatory-bar-pulse, defined in
+     shared/styles.css) instead of Tailwind's built-in `pulse`, so every `animate-pulse`
+     loading placeholder in the CP app (StatsOverview, MetricList, HeatmapChart) matches
+     the widgets' pulse feel exactly rather than running its own faster/lower-contrast one. */
+  --animate-pulse: observatory-bar-pulse 1.4s ease-in-out infinite;
+
   --color-ap-lavender-mist: #e8ebf6;
   --color-ap-periwinkle: #6980dc;
   --color-ap-red: #fe5b5b;
