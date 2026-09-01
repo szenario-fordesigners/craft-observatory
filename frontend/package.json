@@ -1,0 +1,64 @@
+{
+  "name": "frontend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "prepare": "cd .. && ./frontend/node_modules/.bin/husky frontend/.husky",
+    "dev": "vite",
+    "build": "run-p type-check \"build-only {@}\" --",
+    "preview": "vite preview",
+    "build-only": "run-p build-only:*",
+    "build-only:widget": "BUILD_TARGET=widget vite build",
+    "build-only:cp": "BUILD_TARGET=cp vite build",
+    "watch": "run-p watch:*",
+    "watch:widget": "BUILD_TARGET=widget vite build --watch --mode development",
+    "watch:cp": "BUILD_TARGET=cp vite build --watch --mode development",
+    "type-check": "vue-tsc --build",
+    "lint:oxlint": "oxlint . --fix -D correctness --ignore-path .gitignore",
+    "lint:eslint": "eslint . --fix --cache",
+    "lint": "run-s lint:*",
+    "format": "prettier --write src/"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@unovis/ts": "1.6.7",
+    "@unovis/vue": "1.6.7",
+    "tailwindcss": "4.3.3",
+    "vue": "3.5.41"
+  },
+  "devDependencies": {
+    "@prettier/plugin-oxc": "0.2.2",
+    "@tsconfig/node24": "24.0.5",
+    "@types/node": "24.13.3",
+    "@vitejs/plugin-vue": "6.0.8",
+    "@vue/eslint-config-prettier": "10.2.0",
+    "@vue/eslint-config-typescript": "14.9.0",
+    "@vue/tsconfig": "0.9.1",
+    "eslint": "10.9.0",
+    "eslint-plugin-oxlint": "1.79.0",
+    "eslint-plugin-vue": "10.10.0",
+    "husky": "9.1.7",
+    "jiti": "2.7.0",
+    "lint-staged": "17.3.0",
+    "npm-run-all2": "9.0.3",
+    "oxlint": "1.79.0",
+    "prettier": "3.9.6",
+    "prettier-plugin-tailwindcss": "0.8.1",
+    "sass-embedded": "1.103.1",
+    "typescript": "6.0.3",
+    "vite": "8.2.2",
+    "vite-plugin-vue-devtools": "8.2.1",
+    "vue-tsc": "3.3.11"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "lint-staged": {
+    "*.{ts,vue,js}": [
+      "oxlint --fix -D correctness",
+      "eslint --fix --cache"
+    ]
+  }
+}

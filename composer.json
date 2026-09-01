@@ -1,0 +1,73 @@
+{
+	"name": "szenario/craft-observatory",
+	"description": "PostHog analytics, native to the Craft CMS control panel.",
+	"type": "craft-plugin",
+	"license": "proprietary",
+	"support": {
+		"issues": "https://github.com/szenario-fordesigners/craft-observatory/issues?state=open",
+		"source": "https://github.com/szenario-fordesigners/craft-observatory",
+		"docs": "https://github.com/szenario-fordesigners/craft-observatory",
+		"rss": "https://github.com/szenario-fordesigners/craft-observatory/releases.atom"
+	},
+	"require": {
+		"php": ">=8.2",
+		"craftcms/cms": "^5.0.0"
+	},
+	"require-dev": {
+		"craftcms/ecs": "dev-main",
+		"craftcms/phpstan": "dev-main",
+		"phpunit/phpunit": "11.5.56"
+	},
+	"autoload": {
+		"psr-4": {
+			"szenario\\craftobservatory\\": "src/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"szenario\\craftobservatory\\tests\\": "tests/"
+		}
+	},
+	"archive": {
+		"exclude": [
+			"/.agents/**",
+			"/.github/**",
+			"/.gitattributes",
+			"/.gitignore",
+			"/CHANGELOG.md",
+			"/composer.lock",
+			"/ecs.php",
+			"/frontend/**",
+			"/images/**",
+			"/phpstan.neon",
+			"/phpunit.xml.dist",
+			"/renovate.json",
+			"/skills-lock.json",
+			"/tests/**"
+		]
+	},
+	"extra": {
+		"handle": "observatory",
+		"name": "Observatory",
+		"developer": "szenario",
+		"documentationUrl": "https://github.com/szenario-fordesigners/craft-observatory",
+		"changelogUrl": "https://raw.githubusercontent.com/szenario-fordesigners/craft-observatory/main/CHANGELOG.md",
+		"class": "szenario\\craftobservatory\\Observatory"
+	},
+	"scripts": {
+		"check-cs": "ecs check --ansi",
+		"fix-cs": "ecs check --ansi --fix",
+		"phpstan": "phpstan --memory-limit=1G",
+		"test": "phpunit"
+	},
+	"config": {
+		"sort-packages": true,
+		"platform": {
+			"php": "8.2"
+		},
+		"allow-plugins": {
+			"yiisoft/yii2-composer": true,
+			"craftcms/plugin-installer": true
+		}
+	}
+}

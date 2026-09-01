@@ -1,0 +1,33 @@
+@import 'tailwindcss/theme.css';
+@import './preflight-scoped.css';
+@import 'tailwindcss/utilities.css';
+
+@theme {
+  --breakpoint-3xl: 120rem;
+
+  /* Observatory widget palette — mirrors shared/styles.css so the CP can reuse
+     the exact widget colors via Tailwind utilities (e.g. text-observatory-fg/70,
+     bg-observatory-bg). The runtime --observatory-* vars consumed by the shared
+     components (CountryMap, Tooltip) are defined on #observatory-wrapper. */
+  --color-observatory-bg: #eeebb0;
+  --color-observatory-fg: #72715a;
+  --color-observatory-bar: #d8d6ab;
+  --font-observatory: 'Arial', sans-serif;
+
+  /* Reuses the widgets' own skeleton-loading pulse (observatory-bar-pulse, defined in
+     shared/styles.css) instead of Tailwind's built-in `pulse`, so every `animate-pulse`
+     loading placeholder in the CP app (StatsOverview, MetricList, HeatmapChart) matches
+     the widgets' pulse feel exactly rather than running its own faster/lower-contrast one. */
+  --animate-pulse: observatory-bar-pulse 1.4s ease-in-out infinite;
+
+  --color-ap-lavender-mist: #e8ebf6;
+  --color-ap-periwinkle: #6980dc;
+  --color-ap-red: #fe5b5b;
+  --color-ap-orange: #f5c28f;
+  --color-ap-dark-green: #3c6e4e;
+  --color-ap-light-green: #8ff5b3;
+  --font-ap-mono:
+    'Courier New', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    monospace;
+  --spacing-ap-title-p: 0.5rem;
+}

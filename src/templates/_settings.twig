@@ -1,0 +1,73 @@
+{# @var plugin \szenario\craftobservatory\Observatory #}
+{# @var settings \szenario\craftobservatory\models\Settings #}
+
+{% import '_includes/forms.twig' as forms %}
+
+{{ forms.selectField({
+	label: "Analytics source",
+	instructions: "Choose the provider used for dashboard analytics.",
+	id: "analyticsSource",
+	name: "analyticsSource",
+	options: [
+		{ label: "PostHog", value: "posthog" },
+	],
+	value: settings.analyticsSource,
+	errors: settings.getErrors("analyticsSource"),
+	required: true,
+}) }}
+
+<div data-analytics-source-fields="posthog">
+	<hr>
+
+	<h2>PostHog</h2>
+
+	{{ forms.autosuggestField({
+		label: "PostHog host",
+		instructions: "Your PostHog app host, for example https://us.posthog.com or https://eu.posthog.com.",
+		id: "posthogHost",
+		name: "posthogHost",
+		suggestEnvVars: true,
+		value: settings.posthogHost,
+		errors: settings.getErrors("posthogHost"),
+	}) }}
+
+	{{ forms.autosuggestField({
+		label: "PostHog project ID",
+		instructions: "The PostHog project ID used by the Query API.",
+		id: "posthogProjectId",
+		name: "posthogProjectId",
+		suggestEnvVars: true,
+		value: settings.posthogProjectId,
+		errors: settings.getErrors("posthogProjectId"),
+	}) }}
+
+	{{ forms.autosuggestField({
+		label: "PostHog personal API key",
+		instructions: "A personal API key with the query:read scope.",
+		id: "posthogPersonalApiKey",
+		name: "posthogPersonalApiKey",
+		suggestEnvVars: true,
+		value: settings.posthogPersonalApiKey,
+		errors: settings.getErrors("posthogPersonalApiKey"),
+	}) }}
+</div>
+
+{% js %}
+	(() => {
+		const sourceSelect = document.getElementById('settings-analyticsSource');
+		const providerSections = document.querySelectorAll('[data-analytics-source-fields]');
+
+		if (!sourceSelect) {
+			return;
+		}
+
+		const updateVisibleProvider = () => {
+			providerSections.forEach((section) => {
+				section.hidden = section.dataset.analyticsSourceFields !== sourceSelect.value;
+			});
+		};
+
+		sourceSelect.addEventListener('change', updateVisibleProvider);
+		updateVisibleProvider();
+	})();
+{% endjs %}

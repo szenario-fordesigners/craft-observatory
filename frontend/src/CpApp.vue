@@ -1,0 +1,431 @@
+<script setup lang="ts">
+import LineChart from '@/components/LineChart.vue';
+import DateRangeSelector from '@/components/DateRangeSelector.vue';
+import HeatmapChart from '@/components/HeatmapChart.vue';
+import MetricTabs from '@/components/MetricTabs.vue';
+import StatsOverview from '@/components/StatsOverview.vue';
+import CountryMap from '@/shared/CountryMap.vue';
+import StatusNotice from '@/shared/StatusNotice.vue';
+import type { AnalyticsStatus } from '@/shared/analyticsTypes';
+import { useDateRange, type RangeValue } from '@/composables/useDateRange';
+import type {
+  AnalyticsMetric,
+  AnalyticsPageviews,
+  AnalyticsStats,
+  SyncFreshness,
+} from '@/shared/analyticsTypes';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
+
+const props = defineProps<{
+  title?: string;
+  pageviews?: AnalyticsPageviews | null;
+  defaultPeriod?: string;
+  locale?: string;
+}>();
+
+const { currentRangeValue, customRange, rangeParams, setCustomRange } = useDateRange(
+  (props.defaultPeriod as RangeValue) || '7d',
+);
+const currentData = ref<AnalyticsPageviews | null>(props.pageviews ?? null);
+
+const statsData = ref<AnalyticsStats | null>(null);
+const statsLoading = ref(false);
+const statsError = ref<string | null>(null);
+
+const pageTabs = [
+  { key: 'url', label: 'Path' },
+  { key: 'entry', label: 'Entry page' },
+  { key: 'exit', label: 'Exit page' },
+];
+const sourceTabs = [
+  { key: 'referrer', label: 'Referrers' },
+  { key: 'channel', label: 'Channels' },
+];
+const envTabs = [
+  { key: 'browser', label: 'Browser' },
+  { key: 'os', label: 'OS' },
+  { key: 'device', label: 'Device' },
+];
+const locTabs = [
+  { key: 'country', label: 'Country' },
+  { key: 'region', label: 'Region' },
+  { key: 'city', label: 'City' },
+];
+
+const metricsData = ref<Record<string, AnalyticsMetric[]>>({});
+const metricsLoading = ref(false);
+
+const dashboardStatus = ref<AnalyticsStatus | null>(null);
+const heatmapStatus = ref<AnalyticsStatus | null>(null);
+const dashboardFreshness = ref<SyncFreshness | null>(null);
+
+// Show whichever status surfaced an error (dashboard fires first; heatmap is independent).
+const status = computed<AnalyticsStatus | null>(() => {
+  for (const s of [dashboardStatus.value, heatmapStatus.value]) {
+    if (s && (!s.configured || !s.apiKeyValid)) return s;
+  }
+  return dashboardStatus.value ?? heatmapStatus.value;
+});
+
+interface DashboardDataResponse {
+  pageviews?: AnalyticsPageviews | null;
+  stats?: AnalyticsStats | null;
+  metrics?: Record<string, AnalyticsMetric[]>;
+  _syncing?: boolean;
+  lastSyncedAt?: string | null;
+  missingDays?: string[];
+  _status?: AnalyticsStatus;
+}
+
+interface StatsErrorResponse {
+  error: string;
+  temporary: true;
+}
+
+let dashboardAbortController: AbortController | null = null;
+let dashboardRequestId = 0;
+let dashboardPollTimer: ReturnType<typeof setInterval> | null = null;
+let statsAbortController: AbortController | null = null;
+let statsRequestId = 0;
+
+const stopDashboardPolling = () => {
+  if (dashboardPollTimer) {
+    clearInterval(dashboardPollTimer);
+    dashboardPollTimer = null;
+  }
+};
+
+const freshnessMessage = computed(() => {
+  const freshness = dashboardFreshness.value;
+  if (!freshness) return null;
+
+  const missingCount = freshness.missingDays.length;
+  const dayLabel = missingCount === 1 ? 'day' : 'days';
+
+  if (freshness._syncing) {
+    return missingCount > 0
+      ? `Historical data is still syncing (${missingCount} ${dayLabel} incomplete). This page will refresh automatically.`
+      : 'Historical data is still syncing. This page will refresh automatically.';
+  }
+
+  if (missingCount > 0) {
+    return `Historical data is incomplete for ${missingCount} ${dayLabel}. Sync retries may be exhausted; check the Observatory logs or queue.`;
+  }
+
+  return null;
+});
+
+const fetchDashboardData = async (includePageviews = true, showLoading = true) => {
+  dashboardAbortController?.abort();
+
+  const requestId = ++dashboardRequestId;
+  const abortController = new AbortController();
+  dashboardAbortController = abortController;
+
+  if (showLoading) {
+    metricsLoading.value = true;
+  }
+
+  try {
+    const url = new URL(
+      window.Craft.getActionUrl('observatory/dashboard/get-dashboard-data'),
+      window.location.origin,
+    );
+    for (const [key, value] of Object.entries(rangeParams.value)) {
+      url.searchParams.append(key, value);
+    }
+    url.searchParams.append('includePageviews', includePageviews ? '1' : '0');
+    url.searchParams.append('includeStats', '0');
+
+    const response = await fetch(url.toString(), {
+      headers: { Accept: 'application/json' },
+      signal: abortController.signal,
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as DashboardDataResponse;
+
+      if (requestId !== dashboardRequestId) {
+        return;
+      }
+
+      if (includePageviews) {
+        currentData.value = data.pageviews ?? null;
+      }
+
+      metricsData.value = data.metrics ?? {};
+      dashboardFreshness.value = {
+        _syncing: data._syncing ?? false,
+        lastSyncedAt: data.lastSyncedAt ?? null,
+        missingDays: data.missingDays ?? [],
+      };
+      dashboardStatus.value = data._status ?? null;
+    }
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return;
+    }
+
+    console.error('Error fetching dashboard data', e);
+  } finally {
+    if (requestId === dashboardRequestId) {
+      metricsLoading.value = false;
+
+      if (dashboardAbortController === abortController) {
+        dashboardAbortController = null;
+      }
+    }
+  }
+};
+
+const fetchStatsData = async (showLoading = true) => {
+  statsAbortController?.abort();
+
+  const requestId = ++statsRequestId;
+  const abortController = new AbortController();
+  statsAbortController = abortController;
+
+  if (showLoading) {
+    statsLoading.value = true;
+  }
+
+  try {
+    const url = new URL(
+      window.Craft.getActionUrl('observatory/dashboard/get-stats'),
+      window.location.origin,
+    );
+    for (const [key, value] of Object.entries(rangeParams.value)) {
+      url.searchParams.append(key, value);
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: { Accept: 'application/json' },
+      signal: abortController.signal,
+    });
+
+    const data = (await response.json()) as AnalyticsStats | StatsErrorResponse;
+    if (requestId === statsRequestId) {
+      if (response.ok && !('error' in data)) {
+        statsData.value = data;
+        statsError.value = null;
+      } else {
+        statsError.value =
+          'error' in data ? data.error : 'Analytics provider is temporarily unavailable.';
+      }
+    }
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return;
+    }
+
+    console.error('Error fetching dashboard stats', e);
+    if (requestId === statsRequestId) {
+      statsError.value = 'Analytics stats could not be loaded. Please try again shortly.';
+    }
+  } finally {
+    if (requestId === statsRequestId) {
+      statsLoading.value = false;
+
+      if (statsAbortController === abortController) {
+        statsAbortController = null;
+      }
+    }
+  }
+};
+
+onUnmounted(() => {
+  dashboardAbortController?.abort();
+  statsAbortController?.abort();
+  stopDashboardPolling();
+});
+
+watch(
+  () => dashboardFreshness.value?._syncing,
+  (syncing) => {
+    if (syncing) {
+      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
+      if (!dashboardPollTimer) {
+        // Skip a tick rather than aborting the in-flight request: a query slower than the
+        // 5s interval (most likely exactly while a backfill is running server-side) would
+        // otherwise be cancelled by every following tick forever, so its response — the
+        // one that would clear `_syncing` — never arrives. `dashboardAbortController` is
+        // non-null for exactly as long as the current call is still the latest one, so
+        // this also leaves the abort-and-replace behavior for range changes untouched.
+        dashboardPollTimer = setInterval(() => {
+          if (!dashboardAbortController) fetchDashboardData(true, false);
+        }, 5000);
+      }
+    } else {
+      stopDashboardPolling();
+    }
+  },
+);
+
+interface HeatmapData {
+  cells: { weekday: number; hour: number; visitors: number }[];
+  maxVisitors: number;
+  daysWithData: number;
+  _syncing?: boolean;
+  _status?: AnalyticsStatus;
+}
+
+const heatmapData = ref<HeatmapData | null>(null);
+const heatmapLoading = ref(false);
+let heatmapPollTimer: ReturnType<typeof setInterval> | null = null;
+let heatmapInFlight = false;
+
+const heatmapFreshnessMessage = computed(() =>
+  heatmapData.value?._syncing
+    ? 'Heatmap history is still syncing. This page will refresh it automatically.'
+    : null,
+);
+
+const cpNoticeMessage = computed(
+  () => statsError.value ?? freshnessMessage.value ?? heatmapFreshnessMessage.value,
+);
+
+const stopHeatmapPolling = () => {
+  if (heatmapPollTimer) {
+    clearInterval(heatmapPollTimer);
+    heatmapPollTimer = null;
+  }
+};
+
+// Dropped, not raced, the same way useWidgetData.ts's refetch() is: the URL never
+// changes between calls, so there's never a newer request that should replace an older
+// one — only the poll timer and the initial mount ever call this. Without the guard,
+// a response slower than the 5s poll interval let requests pile up with unbounded
+// concurrency, and an older response landing after a newer one could silently overwrite
+// it (even flipping `_syncing` back to true after it had already cleared).
+const fetchHeatmapData = async (showLoading = true) => {
+  if (heatmapInFlight) return;
+
+  heatmapInFlight = true;
+  if (showLoading) {
+    heatmapLoading.value = true;
+  }
+  try {
+    const url = window.Craft.getActionUrl('observatory/dashboard/get-heatmap-data');
+    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (response.ok) {
+      const json = (await response.json()) as HeatmapData;
+      heatmapData.value = json;
+      heatmapStatus.value = json._status ?? null;
+    }
+  } catch (e) {
+    console.error('Error fetching heatmap data', e);
+  } finally {
+    heatmapInFlight = false;
+    heatmapLoading.value = false;
+  }
+};
+
+onMounted(fetchHeatmapData);
+
+watch(
+  () => heatmapData.value?._syncing,
+  (syncing) => {
+    if (syncing) {
+      fetch(window.Craft.getActionUrl('queue/run'), { credentials: 'include' }).catch(() => {});
+      if (!heatmapPollTimer) {
+        heatmapPollTimer = setInterval(() => fetchHeatmapData(false), 5000);
+      }
+    } else {
+      stopHeatmapPolling();
+    }
+  },
+);
+
+onUnmounted(stopHeatmapPolling);
+
+watch(
+  rangeParams,
+  (_newVal, oldVal) => {
+    fetchDashboardData(oldVal !== undefined || !currentData.value);
+    fetchStatsData();
+  },
+  { immediate: true },
+);
+</script>
+
+<template>
+  <div
+    id="observatory-wrapper"
+    class="rounded-[1.25rem] bg-observatory-bg p-6 font-observatory text-observatory-fg"
+  >
+    <StatusNotice :status="status" variant="cp" />
+
+    <div
+      v-if="cpNoticeMessage"
+      class="mb-4 rounded-[0.7rem] bg-observatory-fg/[0.08] px-4 py-3 text-sm text-observatory-fg/80"
+    >
+      {{ cpNoticeMessage }}
+    </div>
+
+    <div class="mb-6 flex items-center justify-between">
+      <h1 class="m-0 text-xl font-medium text-observatory-fg">{{ title }}</h1>
+      <DateRangeSelector
+        v-model="currentRangeValue"
+        :custom-range="customRange"
+        @update:custom-range="setCustomRange"
+      />
+    </div>
+
+    <!-- KPI Stats -->
+    <StatsOverview :stats="statsData" :loading="statsLoading" />
+
+    <!-- Main Chart -->
+    <div class="mb-8 rounded-[0.7rem] bg-observatory-fg/[0.06] px-2 pt-4 pb-0">
+      <div v-if="currentData">
+        <LineChart :pageviews="currentData" :locale="locale" />
+      </div>
+      <div v-else class="flex h-48 items-center justify-center text-observatory-fg/50">
+        Loading data...
+      </div>
+    </div>
+
+    <!-- Grid Layout for Metrics -->
+    <div class="grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
+      <!-- Left Column: Pages & Sources -->
+      <div class="space-y-8">
+        <!-- Pages Group -->
+        <MetricTabs :tabs="pageTabs" :metrics="metricsData" :loading="metricsLoading" />
+
+        <!-- Sources Group -->
+        <MetricTabs :tabs="sourceTabs" :metrics="metricsData" :loading="metricsLoading" />
+      </div>
+
+      <!-- Right Column: Environment & Location -->
+      <div class="space-y-8">
+        <!-- Environment Group -->
+        <MetricTabs :tabs="envTabs" :metrics="metricsData" :loading="metricsLoading" />
+
+        <!-- Location Group -->
+        <MetricTabs :tabs="locTabs" :metrics="metricsData" :loading="metricsLoading" />
+      </div>
+
+      <!-- Heatmap: traffic by hour of day -->
+      <div class="rounded-[0.7rem] bg-observatory-fg/[0.06] p-4">
+        <h2 class="mb-3 text-sm font-medium text-observatory-fg">Traffic by hour of day</h2>
+        <HeatmapChart
+          :cells="heatmapData?.cells ?? []"
+          :max-visitors="heatmapData?.maxVisitors ?? 0"
+          :days-with-data="heatmapData?.daysWithData ?? 0"
+          :loading="heatmapLoading"
+          :locale="locale"
+        />
+      </div>
+
+      <!-- World map: visitors by country -->
+      <div class="rounded-[0.7rem] bg-observatory-fg/[0.06] p-4">
+        <h2 class="mb-3 text-sm font-medium text-observatory-fg">Visitors by country</h2>
+        <CountryMap
+          :countries="metricsLoading ? null : (metricsData.country ?? [])"
+          :locale="locale"
+        />
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped></style>

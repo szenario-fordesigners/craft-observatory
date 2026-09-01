@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "craft-php-guidelines": {
+      "source": "michtio/craftcms-claude-skills",
+      "sourceType": "github",
+      "computedHash": "2caa64861f917dd4cf55f9acd7544776d3792bb2247434e92d797b45b85069b2"
+    },
+    "craft-twig-guidelines": {
+      "source": "michtio/craftcms-claude-skills",
+      "sourceType": "github",
+      "computedHash": "3ae6aaf569331a6c2c751333c927eb5f9b2ef21429002e313024115c50547970"
+    },
+    "craftcms": {
+      "source": "michtio/craftcms-claude-skills",
+      "sourceType": "github",
+      "computedHash": "cc9df5df4a78fc7cdefc56b8de3a1810786c1375d022d52c4abaf2b03f2a87fd"
+    },
+    "ddev": {
+      "source": "michtio/craftcms-claude-skills",
+      "sourceType": "github",
+      "computedHash": "942ae950b15f8897d4e5b537c07cfb4806b82e4d434d24483c0a307348bca191"
+    }
+  }
+}

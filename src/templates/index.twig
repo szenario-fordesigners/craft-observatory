@@ -1,0 +1,17 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Observatory" %}
+{% set plugin = craft.app.plugins.getPlugin('observatory') %}
+{% do plugin.sync.autoSyncMissingDays() %}
+
+{% set props = {
+    title: title,
+    defaultPeriod: '7d',
+    locale: craft.app.locale.id,
+} %}
+
+{% block content %}
+	{% do view.registerAssetBundle("szenario\\craftobservatory\\assetbundles\\craftobservatorycp\\CraftObservatoryCpAsset") %}
+
+	<div id="observatory-cp-app" data-props="{{ props|json_encode|escape('html_attr') }}"></div>
+{% endblock %}
