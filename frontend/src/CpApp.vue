@@ -358,7 +358,7 @@ watch(
     <!-- Main Chart -->
     <div class="mb-8 rounded-[0.7rem] bg-observatory-fg/[0.06] px-2 pt-4 pb-0">
       <div v-if="currentData">
-        <LineChart :pageviews="currentData" />
+        <LineChart :pageviews="currentData" :locale="locale" />
       </div>
       <div v-else class="flex h-48 items-center justify-center text-observatory-fg/50">
         Loading data...

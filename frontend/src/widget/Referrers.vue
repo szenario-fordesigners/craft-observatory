@@ -43,7 +43,7 @@ const listItems = computed(() => {
 });
 
 const getFaviconUrl = (domain: string) => {
-  return `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+  return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`;
 };
 
 const maxVisitors = computed(() => {

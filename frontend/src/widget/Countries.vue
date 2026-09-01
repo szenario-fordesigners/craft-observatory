@@ -32,7 +32,7 @@ const getCountryName = (code: string) => resolveCountryName(code, props.locale, 
 
 const getFlagUrl = (code: string) => {
   if (!code || code === 'Unknown') return ''; // Or a fallback generic icon if you have one
-  return `https://flagcdn.com/w20/${code.toLowerCase()}.png`;
+  return `https://flagcdn.com/w20/${encodeURIComponent(code.toLowerCase())}.png`;
 };
 
 // Limit the number of countries to display so it doesn't get too long

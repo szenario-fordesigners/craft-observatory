@@ -5,6 +5,7 @@ import type { AnalyticsPageviews } from '@/shared/analyticsTypes';
 
 const props = defineProps<{
     pageviews: AnalyticsPageviews | null;
+    locale?: string;
 }>();
 
 type DataRecord = { x: number, y: number }
@@ -59,11 +60,11 @@ const tickFormat = (x: number) => {
             const spanMs = last.x - first.x;
             // If data spans 2 days or less, show hours. Otherwise date.
             if (spanMs <= 48 * 60 * 60 * 1000) {
-                return new Date(x).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return new Date(x).toLocaleTimeString(props.locale, { hour: '2-digit', minute: '2-digit' });
             }
         }
     }
-    return new Date(x).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return new Date(x).toLocaleDateString(props.locale, { month: 'short', day: 'numeric' });
 };
 
 const hoverTemplate = (d: DataRecord) => `${tickFormat(d.x)}: ${d.y.toLocaleString()}`;
