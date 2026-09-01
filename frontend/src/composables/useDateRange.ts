@@ -1,5 +1,9 @@
 import { ref, computed } from 'vue';
-import { format, subDays } from 'date-fns';
+
+/** Formats local Y/M/D components directly — avoids toISOString()'s UTC conversion,
+ *  which can shift the date near local midnight. */
+const toDateKey = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export type RangeValue =
   | 'today' | '24h' | 'this_week' | '7d'
@@ -38,9 +42,11 @@ export function useDateRange(initialRange: RangeValue = '24h') {
 
   // Prefills the custom date inputs only. Browser-local is fine for that: the user sees the
   // exact dates that will be sent and confirms them, so there is no hidden shift.
+  const today = new Date();
+  const sixDaysAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6);
   const customRange = ref<CustomDateRange>({
-    startDate: format(subDays(new Date(), 6), 'yyyy-MM-dd'),
-    endDate: format(new Date(), 'yyyy-MM-dd'),
+    startDate: toDateKey(sixDaysAgo),
+    endDate: toDateKey(today),
   });
 
   /** Query params naming the window for the backend to resolve. */
