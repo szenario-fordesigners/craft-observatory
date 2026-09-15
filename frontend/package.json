@@ -54,7 +54,7 @@
     "vite-plugin-vue-devtools": "8.2.1",
     "vue-tsc": "3.3.11"
   },
-  "packageManager": "pnpm@11.25.0",
+  "packageManager": "pnpm@12.4.0",
   "lint-staged": {
     "*.{ts,vue,js}": [
       "oxlint --fix -D correctness",
