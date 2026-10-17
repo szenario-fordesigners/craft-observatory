@@ -20,7 +20,7 @@ jobs:
 
             # 1. Setup PHP and run unit tests first — fail fast before doing any
             #    frontend work, tag rewrites, or release creation.
-            - uses: shivammathur/setup-php@2.37.2
+            - uses: shivammathur/setup-php@2.40.0
               with:
                   php-version: '8.2'
                   coverage: none
@@ -46,8 +46,8 @@ jobs:
             # 2. Setup Node + pnpm
             - uses: pnpm/action-setup@v6.1.0
               with:
-                  version: 12.9.1
-            - uses: actions/setup-node@v7.0.0
+                  version: 12.12.0
+            - uses: actions/setup-node@v7.1.0
               with:
                   node-version: 24.14.1
                   cache: pnpm
