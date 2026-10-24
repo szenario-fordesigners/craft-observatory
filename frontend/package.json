@@ -28,7 +28,7 @@
     "@unovis/ts": "1.7.1",
     "@unovis/vue": "1.7.1",
     "tailwindcss": "4.3.3",
-    "vue": "3.5.43"
+    "vue": "3.5.44"
   },
   "devDependencies": {
     "@prettier/plugin-oxc": "0.2.3",
@@ -38,23 +38,23 @@
     "@vue/eslint-config-prettier": "10.2.0",
     "@vue/eslint-config-typescript": "14.9.0",
     "@vue/tsconfig": "0.9.1",
-    "eslint": "10.12.0",
-    "eslint-plugin-oxlint": "1.87.0",
+    "eslint": "10.13.0",
+    "eslint-plugin-oxlint": "1.88.0",
     "eslint-plugin-vue": "10.11.1",
     "husky": "9.1.7",
     "jiti": "2.7.0",
     "lint-staged": "17.6.0",
     "npm-run-all2": "9.0.3",
-    "oxlint": "1.87.0",
+    "oxlint": "1.88.0",
     "prettier": "3.9.10",
     "prettier-plugin-tailwindcss": "0.8.1",
-    "sass-embedded": "1.105.1",
+    "sass-embedded": "1.105.2",
     "typescript": "6.0.3",
     "vite": "8.3.4",
     "vite-plugin-vue-devtools": "8.2.1",
     "vue-tsc": "3.3.13"
   },
-  "packageManager": "pnpm@12.12.1",
+  "packageManager": "pnpm@12.14.0",
   "lint-staged": {
     "*.{ts,vue,js}": [
       "oxlint --fix -D correctness",
