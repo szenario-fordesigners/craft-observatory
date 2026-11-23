@@ -376,6 +376,7 @@ watch(
 
     <!-- Main Chart -->
     <div class="mb-8 rounded-[0.7rem] bg-observatory-fg/[0.06] px-2 pt-4 pb-0">
+      <h2 class="mb-3 px-2 text-sm font-medium text-observatory-fg">Pageviews over time</h2>
       <div v-if="currentData">
         <LineChart :pageviews="currentData" :locale="locale" />
       </div>

@@ -67,7 +67,23 @@ const tickFormat = (x: number) => {
     return new Date(x).toLocaleDateString(props.locale, { month: 'short', day: 'numeric' });
 };
 
-const hoverTemplate = (d: DataRecord) => `${tickFormat(d.x)}: ${d.y.toLocaleString()}`;
+// Date-labelled axes get one tick per local midnight; D3's auto ticks land on half-days
+// and print the same date twice. Short (hour-labelled) ranges keep the auto ticks.
+const tickValues = computed<number[] | undefined>(() => {
+    const data = chartData.value;
+    const first = data[0];
+    const last = data[data.length - 1];
+    if (!first || !last || last.x - first.x <= 48 * 60 * 60 * 1000) return undefined;
+
+    const ticks: number[] = [];
+    const day = new Date(first.x);
+    day.setHours(0, 0, 0, 0);
+    if (day.getTime() < first.x) day.setDate(day.getDate() + 1);
+    for (; day.getTime() <= last.x; day.setDate(day.getDate() + 1)) ticks.push(day.getTime());
+    return ticks;
+});
+
+const hoverTemplate =(d: DataRecord) => `${tickFormat(d.x)}: ${d.y.toLocaleString()}`;
 
 </script>
 
@@ -77,7 +93,7 @@ const hoverTemplate = (d: DataRecord) => `${tickFormat(d.x)}: ${d.y.toLocaleStri
             <VisLine :color="lineColor" :x="(d: DataRecord) => d.x" :y="(d: DataRecord) => d.y" />
             <VisCrosshair :color="lineColor" :template="hoverTemplate" />
             <VisTooltip />
-            <VisAxis type="x" :tickFormat="tickFormat" />
+            <VisAxis type="x" :tickFormat="tickFormat" :tickValues="tickValues" :tickTextAdaptiveSets="true" />
             <VisAxis type="y" />
         </VisXYContainer>
     </div>
