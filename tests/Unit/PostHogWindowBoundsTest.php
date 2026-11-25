@@ -54,7 +54,7 @@ class PostHogWindowBoundsTest extends TestCase
      */
     public function testDayBoundsRoundTripToLocalMidnightInAnyZone(): void
     {
-        foreach (['UTC', 'Europe/Berlin', 'US/Pacific', 'Pacific/Kiritimati'] as $zone) {
+        foreach (['UTC', 'Europe/Berlin', 'America/Los_Angeles', 'Pacific/Kiritimati'] as $zone) {
             $tz = new \DateTimeZone($zone);
             [$startMs, $endMs] = AnalyticsTime::dayBounds('2024-06-15', $tz);
 
@@ -71,7 +71,7 @@ class PostHogWindowBoundsTest extends TestCase
         // Guards the inverse mistake: pinning the bounds to one fixed zone would make these
         // identical and reintroduce the offset bug from the other direction.
         [$berlin] = AnalyticsTime::dayBounds('2024-06-15', new \DateTimeZone('Europe/Berlin'));
-        [$pacific] = AnalyticsTime::dayBounds('2024-06-15', new \DateTimeZone('US/Pacific'));
+        [$pacific] = AnalyticsTime::dayBounds('2024-06-15', new \DateTimeZone('America/Los_Angeles'));
 
         $this->assertNotSame($this->expr($berlin), $this->expr($pacific));
     }
