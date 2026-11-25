@@ -1,0 +1,122 @@
+name: Publish Release
+run-name: Publish release ${{ inputs.version }}
+
+on:
+    workflow_dispatch:
+        inputs:
+            version:
+                description: 'Semver version to tag and publish (e.g. 1.0.5)'
+                required: true
+                type: string
+
+concurrency:
+    group: publish-release
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write # Required to push the release tag
+        steps:
+            - uses: actions/checkout@v7.0.1
+              with:
+                  fetch-depth: 0
+
+            # 1. Validate version format, immutability, and changelog entry before running builds.
+            - name: Validate release version
+              env:
+                  VERSION: ${{ inputs.version }}
+              run: |
+                  if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+                      echo "::error::Version '$VERSION' is not valid semver (expected e.g. 1.0.5 or 1.1.0-beta.1 without a leading 'v')."
+                      exit 1
+                  fi
+
+                  if git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null; then
+                      echo "::error::Tag '$VERSION' already exists. Stable versions on Packagist and the Craft Plugin Store are immutable — bump to a new version instead."
+                      exit 1
+                  fi
+
+                  ESCAPED_VERSION="${VERSION//./\\.}"
+                  if ! grep -qE "^## ${ESCAPED_VERSION}( |$)" CHANGELOG.md; then
+                      echo "::error::CHANGELOG.md is missing a '## $VERSION' heading. Add release notes before publishing."
+                      exit 1
+                  fi
+
+            # 2. Setup PHP and run unit tests first — fail fast before building or tagging.
+            - uses: shivammathur/setup-php@2.40.0
+              with:
+                  php-version: '8.2'
+                  coverage: none
+                  tools: composer:v2
+                  extensions: intl, gd, zip, bcmath, dom, mbstring, curl
+
+            - name: Get Composer cache directory
+              id: composer-cache
+              run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache@v6.1.0
+              with:
+                  path: ${{ steps.composer-cache.outputs.dir }}
+                  key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+                  restore-keys: ${{ runner.os }}-composer-
+
+            - name: Install Composer dependencies
+              run: composer install --prefer-dist --no-progress --no-interaction
+
+            - name: Run PHPUnit
+              run: composer test
+
+            # 3. Setup Node + pnpm
+            - uses: pnpm/action-setup@v6.1.1
+              with:
+                  version: 12.21.0
+            - uses: actions/setup-node@v7.1.0
+              with:
+                  node-version: 26.13.1
+                  cache: pnpm
+                  cache-dependency-path: frontend/pnpm-lock.yaml
+
+            # 4. Build the frontend.
+            #    A single `pnpm build` runs both BUILD_TARGET=widget and BUILD_TARGET=cp
+            #    in parallel via run-p, producing two dist bundles.
+            - name: Build frontend assets
+              run: |
+                  cd frontend
+                  pnpm install --frozen-lockfile
+                  pnpm build
+
+            # 5. Verify all expected asset-bundle files were built.
+            - name: Verify built assets
+              run: |
+                  for file in \
+                      src/assetbundles/craftobservatorycp/dist/cp.js \
+                      src/assetbundles/craftobservatorycp/dist/frontend.css \
+                      src/assetbundles/craftobservatorywidget/dist/widget.js \
+                      src/assetbundles/craftobservatorywidget/dist/frontend.css; do
+                      if [[ ! -s "$file" ]]; then
+                          echo "::error::Expected build artifact '$file' is missing or empty."
+                          exit 1
+                      fi
+                  done
+
+            # 6. Commit built assets onto a detached commit and push the immutable tag once.
+            #    `main` stays clean; Craft Plugin Store & Packagist index the final commit directly,
+            #    and Craft's `craftcms/new-release` dispatch triggers create-release.yml for the GitHub Release.
+            - name: Tag and push release
+              env:
+                  VERSION: ${{ inputs.version }}
+              run: |
+                  git config user.name "GitHub Actions"
+                  git config user.email "actions@github.com"
+
+                  git checkout --detach HEAD
+
+                  # Force-add both built bundles (paths come from frontend/vite.config.ts).
+                  git add -f src/assetbundles/craftobservatorywidget/dist
+                  git add -f src/assetbundles/craftobservatorycp/dist
+
+                  git commit -m "Build assets for $VERSION"
+                  git tag -a "$VERSION" -m "Release $VERSION"
+                  git push origin "refs/tags/$VERSION"

@@ -1,5 +1,8 @@
 # Release Notes for Observatory
 
+## 1.0.5 - 2026-11-25
+- Fixed the Observatory page and dashboard widget missing their JavaScript and CSS in 1.0.3 and 1.0.4.
+
 ## 1.0.4 - 2026-11-25
 - Fixed the Observatory page and dashboard widget missing their JavaScript and CSS in 1.0.3.
 
